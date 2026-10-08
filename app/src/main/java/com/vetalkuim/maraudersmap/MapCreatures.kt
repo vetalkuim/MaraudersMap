@@ -28,6 +28,9 @@ class Traveler(var name: String?, var x: Float, var y: Float, var heading: Float
     var targetX = x
     var targetY = y
 
+    /** Точки поворота по пути к цели в обход рисунка; пусто — к цели напрямик. */
+    val route = ArrayDeque<Point>()
+
     /** Сколько ещё точек пройти, прежде чем уйти за край. */
     var targetsLeft = 0
 
@@ -137,6 +140,17 @@ class MapCreatures(
             field = value.coerceIn(0, MAX_COUNT)
         }
 
+    /**
+     * Где можно ходить; null — везде (слоя карты нет или он ещё не готов).
+     * При смене путники, оказавшиеся на рисунке, переходят на ближайшую свободную бумагу,
+     * а все заново прокладывают путь.
+     */
+    var walkArea: WalkArea? = null
+        set(value) {
+            field = value?.takeIf { !it.isEmpty }
+            fitToWalkArea()
+        }
+
     val travelers = mutableListOf<Traveler>()
     val dementors = mutableListOf<Dementor>()
     val footprints = ArrayDeque<Footprint>()
@@ -159,6 +173,9 @@ class MapCreatures(
                 t.x *= sx; t.y *= sy
                 t.targetX *= sx; t.targetY *= sy
                 t.labelX *= sx; t.labelY *= sy
+                val scaled = t.route.map { Point(it.x * sx, it.y * sy) }
+                t.route.clear()
+                t.route.addAll(scaled)
             }
             for (f in footprints) {
                 f.x *= sx; f.y *= sy
@@ -167,8 +184,11 @@ class MapCreatures(
                 d.x *= sx; d.y *= sy
             }
         }
+        val changed = newWidth != width || newHeight != height
         width = newWidth
         height = newHeight
+        // Сетка прежнего размера больше не подходит; новую пришлёт отрисовка.
+        if (changed && walkArea != null) walkArea = null
     }
 
     /**
@@ -187,8 +207,9 @@ class MapCreatures(
     /** Расставляет недостающих путников прямо на экране, без входа с края. */
     private fun populate() {
         while (travelers.size < travelerCount) {
-            val x = random.range(EDGE_MARGIN_DP * dp, width - EDGE_MARGIN_DP * dp)
-            val y = random.range(EDGE_MARGIN_DP * dp, height - EDGE_MARGIN_DP * dp)
+            val spot = walkArea?.randomPoint(random)
+            val x = spot?.x ?: random.range(EDGE_MARGIN_DP * dp, width - EDGE_MARGIN_DP * dp)
+            val y = spot?.y ?: random.range(EDGE_MARGIN_DP * dp, height - EDGE_MARGIN_DP * dp)
             travelers += newTraveler(x, y, random.nextFloat() * 2f * PI.toFloat())
         }
         while (dementors.size < dementorCount) {
@@ -248,7 +269,8 @@ class MapCreatures(
         }
     }
 
-    private fun newTraveler(x: Float, y: Float, heading: Float): Traveler {
+    /** [entry] — свободная точка у края, через которую входит путник из-за экрана. */
+    private fun newTraveler(x: Float, y: Float, heading: Float, entry: Point? = null): Traveler {
         // Имя того, кто ещё уходит за край, — только если других свободных нет.
         val free = freeNames()
         val leaving = travelers.filter { it.leaving }.mapNotNullTo(HashSet()) { it.name }
@@ -257,13 +279,26 @@ class MapCreatures(
             nextLeft = random.nextBoolean()
             meanderPhase = random.nextFloat() * 2f * PI.toFloat()
             targetsLeft = random.nextInt(MIN_TARGETS, MAX_TARGETS + 1)
-            pickTarget(this)
+            if (entry != null) {
+                // Сначала — к входу, оттуда — к цели в той же области.
+                targetX = entry.x
+                targetY = entry.y
+                pickTarget(this, from = entry)
+            } else {
+                pickTarget(this)
+            }
         }
     }
 
-    /** Новый путник входит с любого края экрана. */
+    /** Новый путник входит с любого края экрана; по карте — там, где у края свободная бумага. */
     private fun enteringTraveler(): Traveler {
         val outside = LEAVE_MARGIN_DP * dp * 0.5f
+        walkArea?.randomEntry(random)?.let { (entry, edge) ->
+            val (x, y) = beyond(entry, edge, outside)
+            val t = newTraveler(x, y, 0f, entry)
+            t.heading = atan2(entry.y - y, entry.x - x)
+            return t
+        }
         val (x, y) = when (random.nextInt(4)) {
             0 -> -outside to random.range(0f, height)
             1 -> width + outside to random.range(0f, height)
@@ -275,8 +310,15 @@ class MapCreatures(
         return t
     }
 
-    /** Случайная точка не ближе [EDGE_MARGIN_DP] к краю и не ближе [MIN_HOP_DP] к предыдущей. */
-    private fun pickTarget(t: Traveler) {
+    /**
+     * Случайная точка не ближе [EDGE_MARGIN_DP] к краю и не ближе [MIN_HOP_DP] к предыдущей.
+     * По карте — свободная точка в той же области, путь к ней прокладывается в обход рисунка
+     * из [from] (по умолчанию — откуда путник сейчас).
+     */
+    private fun pickTarget(t: Traveler, from: Point? = null) {
+        val area = walkArea
+        if (area != null && pickTargetOnMap(t, area, from)) return
+        t.route.clear()
         val margin = EDGE_MARGIN_DP * dp
         var bestX = width / 2
         var bestY = height / 2
@@ -300,10 +342,52 @@ class MapCreatures(
         t.targetY = bestY
     }
 
-    /** Цель — точка за ближайшим краем. */
+    private fun pickTargetOnMap(t: Traveler, area: WalkArea, from: Point?): Boolean {
+        // Путь — из текущего места, а если путник сошёл с бумаги — из прежней цели.
+        val starts = listOfNotNull(from, Point(t.x, t.y), Point(t.targetX, t.targetY)).filter { area.isFree(it.x, it.y) }
+        val start = starts.firstOrNull() ?: return false
+        val region = area.regionAt(start.x, start.y)
+        var best: Point? = null
+        var bestDistance = -1f
+        for (i in 0 until TARGET_TRIES) {
+            val p = area.randomPoint(random, region) ?: return false
+            val d = hypot(p.x - start.x, p.y - start.y)
+            if (d > bestDistance) {
+                bestDistance = d
+                best = p
+            }
+            if (d >= MIN_HOP_DP * dp) break
+        }
+        val goal = best ?: return false
+        return routeTo(t, area, start, goal)
+    }
+
+    /** Прокладывает путь из [start] к [goal]; если [start] — не место путника, он сперва идёт туда. */
+    private fun routeTo(t: Traveler, area: WalkArea, start: Point, goal: Point): Boolean {
+        val path = area.path(start.x, start.y, goal.x, goal.y) ?: return false
+        t.route.clear()
+        if (start.x != t.x || start.y != t.y) t.route.addLast(start)
+        t.route.addAll(path)
+        t.targetX = goal.x
+        t.targetY = goal.y
+        return true
+    }
+
+    /** Точка за краем [edge] напротив [p] на расстоянии [out]. */
+    private fun beyond(p: Point, edge: Edge, out: Float): Pair<Float, Float> = when (edge) {
+        Edge.LEFT -> -out to p.y
+        Edge.RIGHT -> width + out to p.y
+        Edge.TOP -> p.x to -out
+        Edge.BOTTOM -> p.x to height + out
+    }
+
+    /** Цель — точка за ближайшим краем; по карте — через ближайший свободный выход к краю. */
     private fun startLeaving(t: Traveler) {
         t.leaving = true
         val out = LEAVE_MARGIN_DP * dp * 2f
+        val area = walkArea
+        if (area != null && leaveOnMap(t, area, out)) return
+        t.route.clear()
         val toLeft = t.x
         val toRight = width - t.x
         val toTop = t.y
@@ -316,27 +400,78 @@ class MapCreatures(
         }
     }
 
+    private fun leaveOnMap(t: Traveler, area: WalkArea, out: Float): Boolean {
+        val start = listOf(Point(t.x, t.y), Point(t.targetX, t.targetY)).firstOrNull { area.isFree(it.x, it.y) }
+            ?: return false
+        val (exit, edge) = area.nearestExit(start.x, start.y) ?: return false
+        if (!routeTo(t, area, start, exit)) return false
+        val (x, y) = beyond(exit, edge, out)
+        t.route.addLast(Point(x, y))
+        t.targetX = x
+        t.targetY = y
+        return true
+    }
+
+    /**
+     * Новая сетка: путники, оказавшиеся на рисунке, переходят на ближайшую свободную бумагу,
+     * следы на рисунке стираются, а пути прокладываются заново. Те, кто ещё не вошёл
+     * на экран, войдут заново через свободный край.
+     */
+    private fun fitToWalkArea() {
+        val area = walkArea
+        if (area != null) {
+            travelers.removeAll { !it.leaving && isOutside(it.x, it.y, 0f) }
+            footprints.removeAll { !area.isFree(it.x, it.y) }
+            for (t in travelers) {
+                if (isOutside(t.x, t.y, 0f) || area.isFree(t.x, t.y)) continue
+                val p = area.nearestFree(t.x, t.y) ?: continue
+                t.x = p.x
+                t.y = p.y
+                t.labelX = Float.NaN
+                t.labelY = Float.NaN
+                t.lastFoot = null
+                t.stride = 0f
+            }
+        }
+        for (t in travelers) {
+            if (t.leaving) startLeaving(t) else pickTarget(t)
+        }
+    }
+
     private fun moveTraveler(t: Traveler, dt: Float) {
         avoidDementors(t)
         val hurry = time < t.hurryUntil
         val speed = SPEED_DP * dp * (if (hurry) HURRY_FACTOR else 1f)
-        val dx = t.targetX - t.x
-        val dy = t.targetY - t.y
-        val distance = hypot(dx, dy)
+        // Пройденные точки поворота отбрасываются; последняя — сама цель.
+        while (t.route.size > 1 && hypot(t.route.first().x - t.x, t.route.first().y - t.y) < WAYPOINT_DP * dp) {
+            t.route.removeFirst()
+        }
+        val distance = hypot(t.targetX - t.x, t.targetY - t.y)
         // Следующая точка выбирается заранее, чтобы путник срезал поворот дугой.
-        if (!t.leaving && distance < ARRIVE_DP * dp) {
+        if (!t.leaving && t.route.size <= 1 && distance < ARRIVE_DP * dp) {
             t.targetsLeft--
             if (t.targetsLeft <= 0) startLeaving(t) else pickTarget(t)
         }
+        val aim = t.route.firstOrNull() ?: Point(t.targetX, t.targetY)
+        val aimDistance = hypot(aim.x - t.x, aim.y - t.y)
 
         // Поворот ограничен по скорости — путь получается плавной кривой без углов.
         // Вблизи цели поворот резче, иначе путник кружил бы вокруг точки.
-        // Лёгкое виляние, чтобы длинный переход не выглядел прочерченным по линейке.
-        val desired = atan2(t.targetY - t.y, t.targetX - t.x) +
-            MEANDER * sin(t.walked / (MEANDER_WAVE_DP * dp) + t.meanderPhase)
+        // Лёгкое виляние, чтобы длинный переход не выглядел прочерченным по линейке;
+        // у рисунка путник не виляет, чтобы не наступить на него.
+        val straight = atan2(aim.y - t.y, aim.x - t.x)
+        val meander = straight + MEANDER * sin(t.walked / (MEANDER_WAVE_DP * dp) + t.meanderPhase)
+        val area = walkArea
+        val desired = if (area == null || isOutside(t.x, t.y, 0f) ||
+            area.isFree(t.x + cos(meander) * LOOK_AHEAD_DP * dp, t.y + sin(meander) * LOOK_AHEAD_DP * dp)
+        ) meander else straight
         val turnRate = if (hurry) TURN_RATE * 2f else TURN_RATE
-        val maxTurn = max(turnRate, 2f * speed / max(distance, 1f)) * dt
+        val maxTurn = max(turnRate, 2f * speed / max(aimDistance, 1f)) * dt
         t.heading += angleDiff(desired, t.heading).coerceIn(-maxTurn, maxTurn)
+        if (area != null && !keepOffDrawing(t, area, straight)) {
+            updateLabel(t, dt)
+            return
+        }
 
         val step = speed * dt
         t.x += cos(t.heading) * step
@@ -350,6 +485,31 @@ class MapCreatures(
         updateLabel(t, dt)
     }
 
+    /**
+     * Не наступать на рисунок: если впереди он, путник сворачивает в ближайшую к цели
+     * свободную сторону. false — свободной стороны нет, путник стоит.
+     */
+    private fun keepOffDrawing(t: Traveler, area: WalkArea, toAim: Float): Boolean {
+        if (!area.isFree(t.x, t.y)) return true
+        val look = area.cell * 0.5f
+        fun clear(angle: Float): Boolean {
+            val x = t.x + cos(angle) * look
+            val y = t.y + sin(angle) * look
+            return isOutside(x, y, 0f) || area.isFree(x, y)
+        }
+        if (clear(t.heading)) return true
+        for (k in 0..DODGE_STEPS) {
+            for (sign in floatArrayOf(1f, -1f)) {
+                val angle = toAim + sign * k * PI.toFloat() / DODGE_STEPS
+                if (clear(angle)) {
+                    t.heading = angle
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     /** Путник боится дементоров: если дементор близко, сворачивает от него и ненадолго ускоряет шаг. */
     private fun avoidDementors(t: Traveler) {
         if (time < t.calmUntil) return
@@ -361,8 +521,19 @@ class MapCreatures(
         if (t.leaving) return
         val away = atan2(t.y - d.y, t.x - d.x) + random.range(-FLEE_SPREAD, FLEE_SPREAD)
         val margin = EDGE_MARGIN_DP * dp
-        t.targetX = (t.x + cos(away) * FLEE_DP * dp).coerceIn(margin, max(margin, width - margin))
-        t.targetY = (t.y + sin(away) * FLEE_DP * dp).coerceIn(margin, max(margin, height - margin))
+        val fleeX = (t.x + cos(away) * FLEE_DP * dp).coerceIn(margin, max(margin, width - margin))
+        val fleeY = (t.y + sin(away) * FLEE_DP * dp).coerceIn(margin, max(margin, height - margin))
+        val area = walkArea
+        if (area == null) {
+            t.route.clear()
+            t.targetX = fleeX
+            t.targetY = fleeY
+            return
+        }
+        // По карте — к ближайшей свободной точке в своей области и в обход рисунка.
+        if (!area.isFree(t.x, t.y)) return
+        val goal = area.nearestFree(fleeX, fleeY, area.regionAt(t.x, t.y)) ?: return
+        routeTo(t, area, Point(t.x, t.y), goal)
     }
 
     /** Множитель непрозрачности следа в точке: чем ближе дементор, тем бледнее. */
@@ -600,6 +771,16 @@ class MapCreatures(
         const val FOOT_MAX_ALPHA = 200
 
         private const val ARRIVE_DP = 70f
+
+        /** Точка поворота пройдена, когда до неё осталось меньше этого. */
+        private const val WAYPOINT_DP = 14f
+
+        /** Как далеко вперёд путник смотрит, прежде чем вильнуть в сторону. */
+        private const val LOOK_AHEAD_DP = 14f
+
+        /** На сколько долей полуоборота путник перебирает стороны, обходя рисунок. */
+        private const val DODGE_STEPS = 12
+
         private const val LEAVE_MARGIN_DP = 40f
         private const val TURN_RATE = 1.1f
         private const val MEANDER = 0.3f

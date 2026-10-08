@@ -5,7 +5,7 @@ import android.graphics.Typeface
 import android.util.Log
 import java.io.File
 
-/** Почерк Bad Script — для подписей путников на карте и их имён в настройках. */
+/** Почерк Marck Script — для подписей путников на карте. */
 object MapFonts {
 
     private const val TAG = "MapFonts"
@@ -14,7 +14,7 @@ object MapFonts {
     private var script: Typeface? = null
 
     /**
-     * Bad Script из `res/font`. Если [android.content.res.Resources.getFont] не справился,
+     * Marck Script из `res/font`. Если [android.content.res.Resources.getFont] не справился,
      * шрифт копируется из ресурса в файл и читается оттуда; курсив с засечками — только в крайнем случае.
      */
     fun script(context: Context): Typeface {
@@ -29,22 +29,22 @@ object MapFonts {
     }
 
     private fun fromResources(context: Context): Typeface? = try {
-        context.resources.getFont(R.font.bad_script)
+        context.resources.getFont(R.font.marck_script)
     } catch (e: Exception) {
-        Log.w(TAG, "getFont(bad_script) failed", e)
+        Log.w(TAG, "getFont(marck_script) failed", e)
         null
     }
 
     private fun fromFile(context: Context): Typeface? = try {
-        val file = File(context.cacheDir, "bad_script.ttf")
+        val file = File(context.cacheDir, "marck_script.ttf")
         if (!file.exists() || file.length() == 0L) {
-            context.resources.openRawResource(R.font.bad_script).use { input ->
+            context.resources.openRawResource(R.font.marck_script).use { input ->
                 file.outputStream().use { input.copyTo(it) }
             }
         }
         Typeface.createFromFile(file).takeIf { it != Typeface.DEFAULT }
     } catch (e: Exception) {
-        Log.w(TAG, "Bad Script from file failed", e)
+        Log.w(TAG, "Marck Script from file failed", e)
         null
     }
 }

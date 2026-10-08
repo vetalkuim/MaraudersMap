@@ -31,6 +31,9 @@ class MapRenderer(private val context: Context) {
     }
     private var mapCache: Bitmap? = null
 
+    /** Картинка карты, по которой посчитана сетка путников: пересчёт — только при новой. */
+    private var walkAreaSource: Bitmap? = null
+
     /** Изображение слоя карты; null — слой выключен или ещё загружается. */
     var mapImage: MapImage? = null
         set(value) {
@@ -82,8 +85,47 @@ class MapRenderer(private val context: Context) {
         canvas.drawColor(Color.BLACK)
         drawBackground(canvas)
         drawMap(canvas)
+        updateWalkArea(canvas.width, canvas.height)
         drawCreatures(canvas)
     }
+
+    /**
+     * Путники ходят только по чистой бумаге — там, где нет рисунка карты.
+     * Без карты (или с невидимой) — по всему экрану.
+     */
+    fun updateWalkArea(width: Int, height: Int) {
+        val world = creatures ?: return
+        val image = mapImage
+        if (image == null || mapIntensity <= 0) {
+            if (world.walkArea != null) world.walkArea = null
+            walkAreaSource = null
+            return
+        }
+        val bitmap = mapBitmap(image, width, height) ?: return
+        if (bitmap === walkAreaSource && world.walkArea != null) return
+        world.walkArea = walkAreaOf(bitmap, world.dp)
+        walkAreaSource = bitmap
+    }
+
+    /** Сетка чернил: клетка занята, если в ней есть хоть одна тёмная точка рисунка. */
+    private fun walkAreaOf(bitmap: Bitmap, dp: Float): WalkArea {
+        val width = bitmap.width
+        val height = bitmap.height
+        val cell = WalkArea.CELL_DP * dp
+        val (cols, rows) = WalkArea.gridSize(width.toFloat(), height.toFloat(), cell)
+        val ink = BooleanArray(cols * rows)
+        val line = IntArray(width)
+        val colOf = IntArray(width) { minOf((it / cell).toInt(), cols - 1) }
+        for (y in 0 until height) {
+            bitmap.getPixels(line, 0, width, 0, y, width, 1)
+            val rowStart = minOf((y / cell).toInt(), rows - 1) * cols
+            for (x in 0 until width) {
+                if (isInk(line[x])) ink[rowStart + colOf[x]] = true
+            }
+        }
+        return WalkArea.fromInk(width.toFloat(), height.toFloat(), cell, dp, ink)
+    }
+
 
     /** Непрозрачность слоёв поверх пергамента: в режиме раскрытия они проступают после разворота листа. */
     private fun revealAlpha(): Int {
@@ -222,6 +264,17 @@ class MapRenderer(private val context: Context) {
 
         /** Поля вокруг карты — доля меньшей стороны экрана. */
         const val MAP_MARGIN = 0.04f
+
+        /** Порог «чернил»: насколько точка темнее бумаги с учётом прозрачности, из 255. */
+        const val INK_THRESHOLD = 64
+
+        /** Тёмная непрозрачная точка; белый фон PNG-рисунка чернилами не считается. */
+        fun isInk(pixel: Int): Boolean {
+            val alpha = pixel ushr 24
+            if (alpha < INK_THRESHOLD) return false
+            val luma = (Color.red(pixel) * 299 + Color.green(pixel) * 587 + Color.blue(pixel) * 114) / 1000
+            return (255 - luma) * alpha / 255 >= INK_THRESHOLD
+        }
 
         fun easeInOut(t: Float): Float = t * t * (3f - 2f * t)
 

@@ -217,8 +217,6 @@ class SettingsActivity : Activity() {
             setHint(R.string.traveler_name_hint)
             setTextColor(getColor(R.color.parchment))
             setHintTextColor(getColor(R.color.parchment_dark))
-            // Тем же почерком, что и подписи путников на карте.
-            typeface = MapFonts.script(this@SettingsActivity)
             backgroundTintList = getColorStateList(R.color.parchment_dark)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
             imeOptions = EditorInfo.IME_ACTION_DONE
@@ -374,8 +372,10 @@ class SettingsActivity : Activity() {
                 travelerNames = travelers
                 dementorCount = dementors
                 resize(width.toFloat(), height.toFloat())
-                warmUp()
             }
+            // Сначала — где можно ходить, потом — первые шаги, чтобы следы сразу шли по чистой бумаге.
+            previewRenderer.updateWalkArea(width, height)
+            previewRenderer.creatures?.warmUp()
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             // Время старта анимации не задано, поэтому рисуется её последний кадр.
             previewRenderer.draw(Canvas(bitmap))
