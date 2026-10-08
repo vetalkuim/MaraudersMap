@@ -217,6 +217,8 @@ class SettingsActivity : Activity() {
             setHint(R.string.traveler_name_hint)
             setTextColor(getColor(R.color.parchment))
             setHintTextColor(getColor(R.color.parchment_dark))
+            // Тем же почерком, что и подписи путников на карте.
+            typeface = resources.getFont(R.font.bad_script)
             backgroundTintList = getColorStateList(R.color.parchment_dark)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
             imeOptions = EditorInfo.IME_ACTION_DONE

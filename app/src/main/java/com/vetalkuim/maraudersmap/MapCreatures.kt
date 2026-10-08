@@ -76,12 +76,6 @@ class Dementor(val variant: DementorVariant, var x: Float, var y: Float, val see
     /** Путник, к которому дементор подлетает или возле которого держится. */
     var prey: Traveler? = null
 
-    /**
-     * Куда обращено лицо по горизонтали: 1 — как на рисунке, −1 — зеркально.
-     * Рядом с путником, оказавшимся за спиной, дементор плавно разворачивается к нему лицом.
-     */
-    var facing = 1f
-
     /** Поворот головы к путнику на экране: −1 — влево, 1 — вправо. */
     var gaze = 0f
 
@@ -566,16 +560,13 @@ class MapCreatures(
         lookAtPrey(d, dt)
     }
 
-    /** Подлетая к путнику и держась рядом, дементор поворачивает к нему лицо. */
+    /**
+     * Подлетая к путнику и держась рядом, дементор поворачивает к нему голову.
+     * Сам он не разворачивается: всегда летит лицом вперёд и улетает за край.
+     */
     private fun lookAtPrey(d: Dementor, dt: Float) {
         val prey = d.prey?.takeIf { d.mode == Dementor.Mode.APPROACH || d.mode == Dementor.Mode.NEAR }
         val dx = if (prey != null) prey.x - d.x else 0f
-        // Летящий вверх смотрит на зрителя — ему достаточно повернуть голову.
-        val sideways = d.variant.heading != Heading.UP
-        val faceTarget = if (prey != null && sideways && dx * d.variant.heading.dx < -FACE_DEADZONE_DP * dp) -1f else 1f
-        val turn = dt / TURN_AROUND_S * 2f
-        d.facing = if (faceTarget > d.facing) min(faceTarget, d.facing + turn) else max(faceTarget, d.facing - turn)
-
         val k = 1f - exp(-dt / GAZE_LAG_S)
         if (prey != null) d.gaze += ((dx / (NEAR_DP * dp)).coerceIn(-1f, 1f) - d.gaze) * k
         d.gazeWeight += ((if (prey != null) 1f else 0f) - d.gazeWeight) * k
@@ -596,7 +587,7 @@ class MapCreatures(
         val NAMES = listOf("Путник", "Странница", "Бродяга", "Скиталец", "Пилигрим")
 
         const val STEP_DP = 30f
-        const val SPEED_DP = 48f
+        const val SPEED_DP = 24f
         const val FOOT_OFFSET_DP = 7f
         const val EDGE_MARGIN_DP = 32f
         const val MIN_HOP_DP = 120f
@@ -623,21 +614,21 @@ class MapCreatures(
 
         /** Высота дементора на экране при обычном масштабе. */
         const val DEMENTOR_HEIGHT_DP = 130f
-        private const val CRUISE_DP = 20f
-        private const val MIN_FORWARD_DP = 6f
-        private const val WIND_DP = 9f
+        private const val CRUISE_DP = 10f
+        private const val MIN_FORWARD_DP = 3f
+        private const val WIND_DP = 4.5f
         private const val BAND = 0.12f
         private const val RETURN_RATE = 0.4f
         private const val DEMENTOR_INERTIA_S = 0.8f
         private const val SCALE_LAG_S = 0.6f
 
-        private const val APPROACH_DP = 26f
+        private const val APPROACH_DP = 13f
         private const val APPROACH_GAIN = 0.6f
         private const val NEAR_DP = 150f
         private const val NEAR_GAIN = 1.5f
         private const val NEAR_SPEED_FACTOR = 1.5f
         const val NEAR_SCALE = 0.85f
-        private const val LEAVE_DP = 32f
+        private const val LEAVE_DP = 16f
         private const val PREY_RANGE_DP = 450f
         private const val FIRST_APPROACH_MIN_S = 3f
         private const val FIRST_APPROACH_MAX_S = 10f
@@ -649,10 +640,6 @@ class MapCreatures(
         private const val NEAR_MAX_S = 5f
         private const val LEAVE_S = 5f
 
-        /** Путник за спиной дальше этого — дементор разворачивается к нему лицом. */
-        private const val FACE_DEADZONE_DP = 20f
-        /** Разворот от рисунка к зеркальному и обратно. */
-        const val TURN_AROUND_S = 0.6f
         private const val GAZE_LAG_S = 0.4f
 
         /** Путник пугается дементора ближе этого расстояния. */
