@@ -21,7 +21,12 @@
     <string name="map_custom_file">Файл: %1$s</string>
     <string name="map_import_failed">Не удалось открыть файл: нужен SVG или PNG</string>
     <string name="creatures_title">Обитатели карты</string>
-    <string name="traveler_count">Путники на экране: %1$d</string>
+    <string name="map_intensity">Интенсивность цвета карты: %1$d%%</string>
+    <string name="travelers_title">Путники</string>
+    <string name="travelers_hint">Путник с пустым именем на карте не показывается</string>
+    <string name="add_traveler">Добавить путника</string>
+    <string name="remove_traveler">Удалить</string>
+    <string name="traveler_name_hint">Имя путника</string>
     <string name="dementor_count">Дементоры на экране: %1$d</string>
     <string name="set_wallpaper">Установить обои</string>
     <string name="preview_description">Предпросмотр обоев</string>

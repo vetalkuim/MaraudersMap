@@ -45,6 +45,37 @@ class TravelerTest {
     }
 
     @Test
+    fun `путники носят имена из настроек, пустые пропускаются`() {
+        val world = world(0).apply { travelerNames = listOf("Гарри", " ", "", "Рон", "Гермиона") }
+        repeat(30 * 5) { world.update(FRAME) }
+        assertEquals(3, world.travelerCount)
+        assertEquals(setOf("Гарри", "Рон", "Гермиона"), world.travelers.filter { !it.leaving }.map { it.name }.toSet())
+    }
+
+    @Test
+    fun `исправленное имя переименовывает путника на месте`() {
+        val world = world(0).apply { travelerNames = listOf("Гарри", "Рон") }
+        repeat(30 * 5) { world.update(FRAME) }
+        val ron = world.travelers.single { it.name == "Рон" }
+        world.travelerNames = listOf("Гарри", "Рональд")
+        assertEquals("Рональд", ron.name)
+        assertTrue(!ron.leaving)
+        assertEquals(2, world.travelers.count { !it.leaving })
+    }
+
+    @Test
+    fun `удалённый путник уходит за край, его не заменяют`() {
+        val world = world(0).apply { travelerNames = listOf("Гарри", "Рон", "Гермиона") }
+        repeat(30 * 5) { world.update(FRAME) }
+        val ron = world.travelers.single { it.name == "Рон" }
+        world.travelerNames = listOf("Гарри", "Гермиона")
+        assertTrue(ron.leaving)
+        repeat(30 * 60) { world.update(FRAME) }
+        assertEquals(setOf("Гарри", "Гермиона"), world.travelers.filter { !it.leaving }.map { it.name }.toSet())
+        assertEquals(2, world.travelers.size)
+    }
+
+    @Test
     fun `ноги чередуются, шаг — 30 dp`() {
         val world = world(1, seed = 5)
         val traveler = world.travelers.single()

@@ -13,10 +13,19 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
 import android.util.Log
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.SeekBar
@@ -44,10 +53,16 @@ class SettingsActivity : Activity() {
     private lateinit var pickImageButton: Button
     private lateinit var mapGroup: RadioGroup
     private lateinit var customMapName: TextView
-    private lateinit var travelerCount: SeekBar
+    private lateinit var mapIntensity: SeekBar
+    private lateinit var mapIntensityLabel: TextView
     private lateinit var dementorCount: SeekBar
-    private lateinit var travelerLabel: TextView
     private lateinit var dementorLabel: TextView
+    private lateinit var travelerList: LinearLayout
+    private lateinit var addTraveler: Button
+
+    /** Имена путников в порядке строк [travelerList], включая пустые. */
+    private val travelerNames = mutableListOf<String>()
+    private val previewRunnable = Runnable { updatePreview() }
 
     /** Подавляет обработчики, когда отметка переключается программно. */
     private var ignoreChecks = false
@@ -62,12 +77,25 @@ class SettingsActivity : Activity() {
         pickImageButton = findViewById(R.id.pick_image)
         mapGroup = findViewById(R.id.map_group)
         customMapName = findViewById(R.id.map_custom_name)
-        travelerCount = findViewById(R.id.traveler_count)
+        mapIntensity = findViewById(R.id.map_intensity)
+        mapIntensityLabel = findViewById(R.id.map_intensity_label)
         dementorCount = findViewById(R.id.dementor_count)
-        travelerLabel = findViewById(R.id.traveler_count_label)
         dementorLabel = findViewById(R.id.dementor_count_label)
-        travelerCount.max = MapCreatures.MAX_COUNT
+        travelerList = findViewById(R.id.traveler_list)
+        addTraveler = findViewById(R.id.add_traveler)
+        mapIntensity.max = MapPrefs.MAX_MAP_INTENSITY
         dementorCount.max = MapCreatures.MAX_COUNT
+
+        travelerNames += MapPrefs.travelerNames(MapPrefs.get(this))
+        travelerNames.forEach { addTravelerRow(it, travelerList.childCount) }
+        updateAddTraveler()
+        addTraveler.setOnClickListener {
+            travelerNames.add(0, "")
+            saveTravelers()
+            val field = addTravelerRow("", 0)
+            field.requestFocus()
+            getSystemService(InputMethodManager::class.java).showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
+        }
 
         MapBackground.entries.forEach { bg -> backgroundGroup.addView(radioButton(bg, bg.title)) }
         MapLayer.entries.forEach { layer -> mapGroup.addView(radioButton(layer, layer.title)) }
@@ -95,21 +123,25 @@ class SettingsActivity : Activity() {
             }
         }
 
-        val counts = object : SeekBar.OnSeekBarChangeListener {
+        val sliders = object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                if (fromUser) showCounts(travelerCount.progress, dementorCount.progress)
+                if (fromUser) showSliders(mapIntensity.progress, dementorCount.progress)
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
 
             /** Сохраняется, когда палец отпущен, — превью не пересобирается на каждом делении. */
             override fun onStopTrackingTouch(seekBar: SeekBar) {
-                MapPrefs.setCounts(this@SettingsActivity, travelerCount.progress, dementorCount.progress)
+                if (seekBar == mapIntensity) {
+                    MapPrefs.setMapIntensity(this@SettingsActivity, seekBar.progress)
+                } else {
+                    MapPrefs.setDementorCount(this@SettingsActivity, seekBar.progress)
+                }
                 showSaved()
             }
         }
-        travelerCount.setOnSeekBarChangeListener(counts)
-        dementorCount.setOnSeekBarChangeListener(counts)
+        mapIntensity.setOnSeekBarChangeListener(sliders)
+        dementorCount.setOnSeekBarChangeListener(sliders)
 
         pickImageButton.setOnClickListener { pickImage() }
         findViewById<Button>(R.id.pick_map).setOnClickListener { pickMapFile() }
@@ -117,6 +149,7 @@ class SettingsActivity : Activity() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(previewRunnable)
         worker.execute { previewRenderer.release() }
         worker.shutdown()
         super.onDestroy()
@@ -155,11 +188,11 @@ class SettingsActivity : Activity() {
         check(mapGroup, layer)
         ignoreChecks = false
 
-        val travelers = MapPrefs.travelerCount(prefs)
+        val intensity = MapPrefs.mapIntensity(prefs)
         val dementors = MapPrefs.dementorCount(prefs)
-        travelerCount.progress = travelers
+        mapIntensity.progress = intensity
         dementorCount.progress = dementors
-        showCounts(travelers, dementors)
+        showSliders(intensity, dementors)
 
         pickImageButton.visibility = if (background == MapBackground.CUSTOM) View.VISIBLE else View.GONE
         val name = MapPrefs.customMapName(prefs)
@@ -168,9 +201,65 @@ class SettingsActivity : Activity() {
         updatePreview()
     }
 
-    private fun showCounts(travelers: Int, dementors: Int) {
-        travelerLabel.text = getString(R.string.traveler_count, travelers)
+    private fun showSliders(intensity: Int, dementors: Int) {
+        mapIntensityLabel.text = getString(R.string.map_intensity, intensity)
         dementorLabel.text = getString(R.string.dementor_count, dementors)
+    }
+
+    /** Строка «имя + Удалить». Позиция строки в [travelerList] совпадает с индексом в [travelerNames]. */
+    private fun addTravelerRow(name: String, index: Int): EditText {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val field = EditText(this).apply {
+            setText(name)
+            setHint(R.string.traveler_name_hint)
+            setTextColor(getColor(R.color.parchment))
+            setHintTextColor(getColor(R.color.parchment_dark))
+            backgroundTintList = getColorStateList(R.color.parchment_dark)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            // Состояние строк восстанавливается из настроек, а не из сохранённых View.
+            isSaveEnabled = false
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+                override fun afterTextChanged(s: Editable?) {
+                    val i = travelerList.indexOfChild(row)
+                    if (i < 0) return
+                    travelerNames[i] = s?.toString().orEmpty()
+                    saveTravelers()
+                }
+            })
+        }
+        val remove = Button(this).apply {
+            setText(R.string.remove_traveler)
+            setOnClickListener {
+                val i = travelerList.indexOfChild(row)
+                if (i < 0) return@setOnClickListener
+                travelerNames.removeAt(i)
+                travelerList.removeView(row)
+                saveTravelers()
+            }
+        }
+        row.addView(field, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(remove, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        travelerList.addView(row, index)
+        updateAddTraveler()
+        return field
+    }
+
+    /** Обои переименовывают путников сразу, а превью пересобирается, когда ввод затихнет. */
+    private fun saveTravelers() {
+        MapPrefs.setTravelerNames(this, travelerNames)
+        updateAddTraveler()
+        mainHandler.removeCallbacks(previewRunnable)
+        mainHandler.postDelayed(previewRunnable, PREVIEW_DEBOUNCE_MS)
+    }
+
+    private fun updateAddTraveler() {
+        addTraveler.isEnabled = travelerNames.size < MapCreatures.MAX_TRAVELERS
     }
 
     private fun check(group: RadioGroup, tag: Any) {
@@ -250,8 +339,9 @@ class SettingsActivity : Activity() {
         val layer = MapPrefs.mapLayer(prefs)
         val mapStamp = prefs.getLong(MapPrefs.KEY_CUSTOM_STAMP, 0L)
         val customVersion = prefs.getLong(MapPrefs.KEY_CUSTOM_VERSION, 0L)
-        val travelers = MapPrefs.travelerCount(prefs)
+        val travelers = MapPrefs.travelerNames(prefs)
         val dementors = MapPrefs.dementorCount(prefs)
+        val intensity = MapPrefs.mapIntensity(prefs)
         val metrics = resources.displayMetrics
         val width = minOf(metrics.widthPixels, metrics.heightPixels) / PREVIEW_DOWNSCALE
         val height = maxOf(metrics.widthPixels, metrics.heightPixels) / PREVIEW_DOWNSCALE
@@ -276,9 +366,10 @@ class SettingsActivity : Activity() {
                 previewCustomVersion = customVersion
             }
             previewRenderer.background = background
+            previewRenderer.mapIntensity = intensity
             // Превью в PREVIEW_DOWNSCALE раз меньше экрана — путники уменьшены так же.
             previewRenderer.creatures = MapCreatures(metrics.density / PREVIEW_DOWNSCALE).apply {
-                travelerCount = travelers
+                travelerNames = travelers
                 dementorCount = dementors
                 resize(width.toFloat(), height.toFloat())
                 warmUp()
@@ -312,6 +403,7 @@ class SettingsActivity : Activity() {
         const val REQUEST_PICK_IMAGE = 1
         const val REQUEST_MAP_FILE = 2
         const val PREVIEW_DOWNSCALE = 3
+        const val PREVIEW_DEBOUNCE_MS = 500L
         const val TAG = "MapSettings"
     }
 }
