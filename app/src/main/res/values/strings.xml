@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Карта мародёров</string>
     <string name="wallpaper_name">Карта мародёров</string>
-    <string name="wallpaper_description">Живые обои: старый пергамент Карты мародёров</string>
+    <string name="wallpaper_description">Живые обои: Карта мародёров на старом пергаменте</string>
     <string name="oath">Торжественно клянусь,\nчто замышляю только шалость</string>
     <string name="background_title">Фон</string>
     <string name="bg_fold_wide">Сложенная карта (широкий сгиб)</string>
@@ -13,7 +13,14 @@
     <string name="no_image_picker">На устройстве не найдено приложение для выбора картинок</string>
     <string name="image_import_failed">Не удалось загрузить картинку</string>
     <string name="bg_unfold">Анимация раскрытия</string>
+    <string name="map_title">Карта</string>
+    <string name="map_none">Без карты</string>
+    <string name="map_hogwarts">Карта мародёров (по умолчанию)</string>
+    <string name="map_custom">Свой файл (SVG или PNG)</string>
+    <string name="map_pick">Выбрать файл карты…</string>
+    <string name="map_custom_file">Файл: %1$s</string>
+    <string name="map_import_failed">Не удалось открыть файл: нужен SVG или PNG</string>
     <string name="set_wallpaper">Установить обои</string>
-    <string name="preview_description">Предпросмотр фона</string>
+    <string name="preview_description">Предпросмотр обоев</string>
     <string name="no_wallpaper_picker">На устройстве не найден выбор живых обоев</string>
 </resources>
