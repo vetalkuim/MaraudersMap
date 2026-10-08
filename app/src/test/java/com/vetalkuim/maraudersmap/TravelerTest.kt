@@ -89,7 +89,7 @@ class TravelerTest {
     }
 
     @Test
-    fun `ноги чередуются, шаг — 30 dp`() {
+    fun `ноги чередуются, шаг — 20 dp`() {
         val world = world(1, seed = 5)
         val traveler = world.travelers.single()
         val feet = mutableListOf<Footprint>()
@@ -103,15 +103,16 @@ class TravelerTest {
             assertTrue(a.left != b.left)
             // Между соседними следами — шаг вдоль пути плюс смещение ног в стороны.
             val distance = hypot(b.x - a.x, b.y - a.y) / dp
-            assertTrue("шаг $distance dp", distance in 25f..36f)
+            assertTrue("шаг $distance dp", distance in 18f..28f)
         }
     }
 
     @Test
-    fun `след проявляется за 0,35 с и гаснет к 3 с`() {
+    fun `след проявляется за 0,35 с и гаснет к 8,3 с`() {
         assertEquals(0f, MapCreatures.footprintOpacity(0f), 0f)
         assertEquals(1f, MapCreatures.footprintOpacity(MapCreatures.FOOT_FADE_IN_S), 1e-6f)
-        assertTrue(MapCreatures.footprintOpacity(2f) < MapCreatures.footprintOpacity(1f))
+        assertTrue(MapCreatures.footprintOpacity(6f) < MapCreatures.footprintOpacity(3f))
+        assertTrue(MapCreatures.footprintOpacity(7f) > 0f)
         assertEquals(0f, MapCreatures.footprintOpacity(MapCreatures.FOOT_LIFE_S), 0f)
         assertEquals(200, MapCreatures.FOOT_MAX_ALPHA)
     }
