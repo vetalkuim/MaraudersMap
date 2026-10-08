@@ -372,8 +372,10 @@ class SettingsActivity : Activity() {
                 travelerNames = travelers
                 dementorCount = dementors
                 resize(width.toFloat(), height.toFloat())
-                warmUp()
             }
+            // Сначала — где можно ходить, потом — первые шаги, чтобы следы сразу шли по чистой бумаге.
+            previewRenderer.updateWalkArea(width, height)
+            previewRenderer.creatures?.warmUp()
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             // Время старта анимации не задано, поэтому рисуется её последний кадр.
             previewRenderer.draw(Canvas(bitmap))
