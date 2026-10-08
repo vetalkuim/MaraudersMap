@@ -8,6 +8,7 @@ enum class MapBackground(val drawable: Int, val title: Int) {
     FOLD_WIDE(R.drawable.bg_fold_wide, R.string.bg_fold_wide),
     FOLD_THIN(R.drawable.bg_fold_thin, R.string.bg_fold_thin),
     PLAIN(R.drawable.bg_plain, R.string.bg_plain),
+    PARCHMENT(R.drawable.bg_parchment, R.string.bg_parchment),
     UNFOLD(R.drawable.bg_plain, R.string.bg_unfold);
 
     companion object {

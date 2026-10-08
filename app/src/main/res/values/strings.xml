@@ -8,6 +8,7 @@
     <string name="bg_fold_wide">Сложенная карта (широкий сгиб)</string>
     <string name="bg_fold_thin">Разглаженная карта (тонкий сгиб)</string>
     <string name="bg_plain">Ровный пергамент</string>
+    <string name="bg_parchment">Старый пергамент с пятнами</string>
     <string name="bg_unfold">Анимация раскрытия</string>
     <string name="set_wallpaper">Установить обои</string>
     <string name="preview_description">Предпросмотр фона</string>
