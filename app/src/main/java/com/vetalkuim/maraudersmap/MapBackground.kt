@@ -28,6 +28,8 @@ object MapPrefs {
     const val KEY_MAP_LAYER = "map_layer"
     const val KEY_CUSTOM_NAME = "map_custom_name"
     const val KEY_CUSTOM_STAMP = "map_custom_stamp"
+    const val KEY_TRAVELERS = "traveler_count"
+    const val KEY_DEMENTORS = "dementor_count"
 
     /** Меняется при каждой новой своей картинке, чтобы обои перечитали файл. */
     const val KEY_CUSTOM_VERSION = "custom_version"
@@ -51,6 +53,16 @@ object MapPrefs {
 
     fun setMapLayer(context: Context, layer: MapLayer) {
         get(context).edit().putString(KEY_MAP_LAYER, layer.name).apply()
+    }
+
+    fun travelerCount(prefs: SharedPreferences): Int =
+        prefs.getInt(KEY_TRAVELERS, MapCreatures.DEFAULT_TRAVELERS).coerceIn(0, MapCreatures.MAX_COUNT)
+
+    fun dementorCount(prefs: SharedPreferences): Int =
+        prefs.getInt(KEY_DEMENTORS, MapCreatures.DEFAULT_DEMENTORS).coerceIn(0, MapCreatures.MAX_COUNT)
+
+    fun setCounts(context: Context, travelers: Int, dementors: Int) {
+        get(context).edit().putInt(KEY_TRAVELERS, travelers).putInt(KEY_DEMENTORS, dementors).apply()
     }
 
     fun customMapName(prefs: SharedPreferences): String? = prefs.getString(KEY_CUSTOM_NAME, null)

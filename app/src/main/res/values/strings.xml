@@ -20,6 +20,9 @@
     <string name="map_pick">Выбрать файл карты…</string>
     <string name="map_custom_file">Файл: %1$s</string>
     <string name="map_import_failed">Не удалось открыть файл: нужен SVG или PNG</string>
+    <string name="creatures_title">Обитатели карты</string>
+    <string name="traveler_count">Путники на экране: %1$d</string>
+    <string name="dementor_count">Дементоры на экране: %1$d</string>
     <string name="set_wallpaper">Установить обои</string>
     <string name="preview_description">Предпросмотр обоев</string>
     <string name="no_wallpaper_picker">На устройстве не найден выбор живых обоев</string>

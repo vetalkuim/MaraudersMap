@@ -19,6 +19,7 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import java.util.concurrent.ExecutorService
@@ -43,6 +44,10 @@ class SettingsActivity : Activity() {
     private lateinit var pickImageButton: Button
     private lateinit var mapGroup: RadioGroup
     private lateinit var customMapName: TextView
+    private lateinit var travelerCount: SeekBar
+    private lateinit var dementorCount: SeekBar
+    private lateinit var travelerLabel: TextView
+    private lateinit var dementorLabel: TextView
 
     /** Подавляет обработчики, когда отметка переключается программно. */
     private var ignoreChecks = false
@@ -57,6 +62,12 @@ class SettingsActivity : Activity() {
         pickImageButton = findViewById(R.id.pick_image)
         mapGroup = findViewById(R.id.map_group)
         customMapName = findViewById(R.id.map_custom_name)
+        travelerCount = findViewById(R.id.traveler_count)
+        dementorCount = findViewById(R.id.dementor_count)
+        travelerLabel = findViewById(R.id.traveler_count_label)
+        dementorLabel = findViewById(R.id.dementor_count_label)
+        travelerCount.max = MapCreatures.MAX_COUNT
+        dementorCount.max = MapCreatures.MAX_COUNT
 
         MapBackground.entries.forEach { bg -> backgroundGroup.addView(radioButton(bg, bg.title)) }
         MapLayer.entries.forEach { layer -> mapGroup.addView(radioButton(layer, layer.title)) }
@@ -83,6 +94,22 @@ class SettingsActivity : Activity() {
                 showSaved()
             }
         }
+
+        val counts = object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (fromUser) showCounts(travelerCount.progress, dementorCount.progress)
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
+
+            /** Сохраняется, когда палец отпущен, — превью не пересобирается на каждом делении. */
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                MapPrefs.setCounts(this@SettingsActivity, travelerCount.progress, dementorCount.progress)
+                showSaved()
+            }
+        }
+        travelerCount.setOnSeekBarChangeListener(counts)
+        dementorCount.setOnSeekBarChangeListener(counts)
 
         pickImageButton.setOnClickListener { pickImage() }
         findViewById<Button>(R.id.pick_map).setOnClickListener { pickMapFile() }
@@ -128,11 +155,22 @@ class SettingsActivity : Activity() {
         check(mapGroup, layer)
         ignoreChecks = false
 
+        val travelers = MapPrefs.travelerCount(prefs)
+        val dementors = MapPrefs.dementorCount(prefs)
+        travelerCount.progress = travelers
+        dementorCount.progress = dementors
+        showCounts(travelers, dementors)
+
         pickImageButton.visibility = if (background == MapBackground.CUSTOM) View.VISIBLE else View.GONE
         val name = MapPrefs.customMapName(prefs)
         customMapName.visibility = if (name == null) View.GONE else View.VISIBLE
         if (name != null) customMapName.text = getString(R.string.map_custom_file, name)
         updatePreview()
+    }
+
+    private fun showCounts(travelers: Int, dementors: Int) {
+        travelerLabel.text = getString(R.string.traveler_count, travelers)
+        dementorLabel.text = getString(R.string.dementor_count, dementors)
     }
 
     private fun check(group: RadioGroup, tag: Any) {
@@ -212,6 +250,8 @@ class SettingsActivity : Activity() {
         val layer = MapPrefs.mapLayer(prefs)
         val mapStamp = prefs.getLong(MapPrefs.KEY_CUSTOM_STAMP, 0L)
         val customVersion = prefs.getLong(MapPrefs.KEY_CUSTOM_VERSION, 0L)
+        val travelers = MapPrefs.travelerCount(prefs)
+        val dementors = MapPrefs.dementorCount(prefs)
         val metrics = resources.displayMetrics
         val width = minOf(metrics.widthPixels, metrics.heightPixels) / PREVIEW_DOWNSCALE
         val height = maxOf(metrics.widthPixels, metrics.heightPixels) / PREVIEW_DOWNSCALE
@@ -238,6 +278,8 @@ class SettingsActivity : Activity() {
             previewRenderer.background = background
             // Превью в PREVIEW_DOWNSCALE раз меньше экрана — путники уменьшены так же.
             previewRenderer.creatures = MapCreatures(metrics.density / PREVIEW_DOWNSCALE).apply {
+                travelerCount = travelers
+                dementorCount = dementors
                 resize(width.toFloat(), height.toFloat())
                 warmUp()
             }
