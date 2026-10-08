@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Пара следов — узнаваемый мотив Карты мародёров. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-12">
+        <!-- Левый след -->
+        <path
+            android:fillColor="@color/ink"
+            android:pathData="M42,40 C36,40 34,48 35,55 C36,61 39,64 42,64 C45,64 48,61 48,54 C48,47 47,40 42,40 Z" />
+        <path
+            android:fillColor="@color/ink"
+            android:pathData="M42,66 C39,66 37.5,69 38,72 C38.5,75 40,76 42,76 C44,76 45.5,75 46,72 C46.5,69 45,66 42,66 Z" />
+        <!-- Правый след, чуть выше -->
+        <path
+            android:fillColor="@color/ink"
+            android:pathData="M64,32 C58,32 56,40 57,47 C58,53 61,56 64,56 C67,56 70,53 70,46 C70,39 69,32 64,32 Z" />
+        <path
+            android:fillColor="@color/ink"
+            android:pathData="M64,58 C61,58 59.5,61 60,64 C60.5,67 62,68 64,68 C66,68 67.5,67 68,64 C68.5,61 67,58 64,58 Z" />
+    </group>
+</vector>
