@@ -16,7 +16,7 @@ class MapWallpaperService : WallpaperService() {
     private inner class MapEngine : Engine(), SharedPreferences.OnSharedPreferenceChangeListener {
 
         private val handler = Handler(Looper.getMainLooper())
-        private val renderer = MapRenderer(resources)
+        private val renderer = MapRenderer(this@MapWallpaperService)
         private val prefs = MapPrefs.get(this@MapWallpaperService)
         private var visible = false
         private val drawRunnable = Runnable { drawFrame() }
@@ -65,6 +65,10 @@ class MapWallpaperService : WallpaperService() {
                 MapPrefs.KEY_BACKGROUND -> {
                     renderer.background = MapPrefs.background(sharedPreferences)
                     renderer.restartUnfold()
+                    drawFrame()
+                }
+                MapPrefs.KEY_CUSTOM_VERSION -> {
+                    renderer.invalidateCustom()
                     drawFrame()
                 }
                 MapPrefs.KEY_MAP_LAYER, MapPrefs.KEY_CUSTOM_STAMP -> loadMap()

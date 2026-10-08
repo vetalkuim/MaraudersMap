@@ -1,6 +1,6 @@
 package com.vetalkuim.maraudersmap
 
-import android.content.res.Resources
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BlendMode
@@ -19,7 +19,7 @@ import android.os.SystemClock
  *
  * Следующие слои (имена, следы) рисуются поверх в [draw].
  */
-class MapRenderer(private val resources: Resources) {
+class MapRenderer(private val context: Context) {
 
     private val bitmaps = mutableMapOf<MapBackground, Bitmap>()
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
@@ -127,9 +127,15 @@ class MapRenderer(private val resources: Resources) {
     }
 
     private fun bitmapFor(bg: MapBackground): Bitmap = bitmaps.getOrPut(bg) {
-        BitmapFactory.decodeResource(resources, bg.drawable, BitmapFactory.Options().apply {
+        val custom = if (bg == MapBackground.CUSTOM) CustomBackground.load(context) else null
+        custom ?: BitmapFactory.decodeResource(context.resources, bg.drawable, BitmapFactory.Options().apply {
             inScaled = false
         })
+    }
+
+    /** Сбрасывает закэшированную свою картинку, чтобы при следующей отрисовке прочитать новую. */
+    fun invalidateCustom() {
+        bitmaps.remove(MapBackground.CUSTOM)?.recycle()
     }
 
     private fun releaseUnused() {
