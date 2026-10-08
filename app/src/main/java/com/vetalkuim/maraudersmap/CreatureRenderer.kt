@@ -9,7 +9,6 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sin
 
@@ -59,8 +58,7 @@ class CreatureRenderer(context: Context) {
     /**
      * Картинка рисуется горизонтальными полосами: низ балахона колышется волной, капюшон
      * иногда чуть сдвигается вбок — голова поворачивается; вся фигура слегка покачивается.
-     * Рядом с путником голова смотрит на него, а если путник за спиной — фигура разворачивается
-     * к нему лицом: картинка сжимается по ширине и раскрывается зеркальной.
+     * Рядом с путником голова смотрит на него; сама фигура не разворачивается.
      */
     private fun drawDementor(canvas: Canvas, creatures: MapCreatures, d: Dementor, backgroundAt: (Float, Float) -> Int) {
         val h = creatures.dementorHeight(d.scale)
@@ -68,17 +66,13 @@ class CreatureRenderer(context: Context) {
         val sprite = sprites.get(d.variant, creatures.dementorHeight(1f)) ?: return
         val bitmap = sprite.bitmap
         val t = creatures.time
-        // На середине разворота картинка не исчезает совсем, а становится узкой полоской.
-        val flip = if (d.facing < 0f) -1f else 1f
-        val scaleX = flip * max(abs(d.facing), MIN_TURN_WIDTH)
         // Взгляд на путника задан на экране, а сдвиг головы — в координатах картинки.
         val wander = headTurn(t, d.seed)
-        val head = (wander + (d.gaze * flip - wander) * d.gazeWeight) * HEAD_SHIFT * w
+        val head = (wander + (d.gaze - wander) * d.gazeWeight) * HEAD_SHIFT * w
 
         val save = canvas.save()
         canvas.translate(d.x, d.y)
         canvas.rotate(SWAY_DEGREES * sin(t * 0.9f + d.seed), 0f, -h / 2)
-        canvas.scale(scaleX, 1f)
         for (i in 0 until STRIPS) {
             val f0 = i.toFloat() / STRIPS
             val f1 = (i + 1).toFloat() / STRIPS
@@ -94,7 +88,7 @@ class CreatureRenderer(context: Context) {
         val faceLeft = -w / 2 + sprite.faceLeft * sx + head
         val faceTop = -h / 2 + sprite.faceTop * sy
         dst.set(faceLeft, faceTop, faceLeft + sprite.face.width * sx, faceTop + sprite.face.height * sy)
-        facePaint.color = shade(backgroundAt(d.x + dst.centerX() * scaleX, d.y + dst.centerY()))
+        facePaint.color = shade(backgroundAt(d.x + dst.centerX(), d.y + dst.centerY()))
         canvas.drawBitmap(sprite.face, null, dst, facePaint)
         canvas.restoreToCount(save)
     }
@@ -126,7 +120,6 @@ class CreatureRenderer(context: Context) {
     }
 
     private companion object {
-        const val MIN_TURN_WIDTH = 0.08f
         const val STRIPS = 24
         const val SWAY_DEGREES = 2.5f
 
