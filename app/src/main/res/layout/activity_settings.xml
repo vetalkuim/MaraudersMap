@@ -92,6 +92,48 @@
             android:text="@string/map_pick"
             android:textColor="@color/ink" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:fontFamily="serif"
+            android:text="@string/creatures_title"
+            android:textColor="@color/parchment"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/traveler_count_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/parchment"
+            android:textSize="16sp" />
+
+        <SeekBar
+            android:id="@+id/traveler_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:progressTint="@color/parchment"
+            android:thumbTint="@color/parchment" />
+
+        <TextView
+            android:id="@+id/dementor_count_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textColor="@color/parchment"
+            android:textSize="16sp" />
+
+        <SeekBar
+            android:id="@+id/dementor_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:progressTint="@color/parchment"
+            android:thumbTint="@color/parchment" />
+
         <Button
             android:id="@+id/set_wallpaper"
             android:layout_width="match_parent"
