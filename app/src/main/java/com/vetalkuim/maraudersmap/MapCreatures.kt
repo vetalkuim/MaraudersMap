@@ -478,8 +478,10 @@ class MapCreatures(
         t.y += sin(t.heading) * step
         t.walked += step
         t.stride += step
-        while (t.stride >= STEP_DP * dp) {
-            t.stride -= STEP_DP * dp
+        // Убегая, путник семенит: шаги вдвое короче.
+        val stepLength = (if (hurry) HURRY_STEP_DP else STEP_DP) * dp
+        while (t.stride >= stepLength) {
+            t.stride -= stepLength
             leaveFootprint(t)
         }
         updateLabel(t, dt)
@@ -757,15 +759,20 @@ class MapCreatures(
         /** Имена по умолчанию: первые [DEFAULT_TRAVELERS] — для новых настроек. */
         val NAMES = listOf("Путник", "Странница", "Бродяга", "Скиталец", "Пилигрим")
 
-        const val STEP_DP = 30f
+        const val STEP_DP = 20f
+
+        /** Шаг, когда путник убегает от дементора. */
+        const val HURRY_STEP_DP = 15f
         const val SPEED_DP = 24f
         const val FOOT_OFFSET_DP = 7f
         const val EDGE_MARGIN_DP = 32f
         const val MIN_HOP_DP = 120f
         const val LABEL_RISE_DP = 26f
 
-        const val FOOT_LIFE_S = 3f
         const val FOOT_FADE_IN_S = 0.35f
+
+        /** След живёт 8,3 с: проявляется за 0,35 с и гаснет ещё ~8 с. */
+        const val FOOT_LIFE_S = 8.3f
 
         /** Наибольшая непрозрачность следа: 200 из 255. */
         const val FOOT_MAX_ALPHA = 200
@@ -794,7 +801,7 @@ class MapCreatures(
         private const val WARM_UP_STEP_S = 1f / 30f
 
         /** Высота дементора на экране при обычном масштабе. */
-        const val DEMENTOR_HEIGHT_DP = 130f
+        const val DEMENTOR_HEIGHT_DP = 104f
         private const val CRUISE_DP = 10f
         private const val MIN_FORWARD_DP = 3f
         private const val WIND_DP = 4.5f
