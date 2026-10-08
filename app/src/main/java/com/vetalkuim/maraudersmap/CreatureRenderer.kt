@@ -26,7 +26,7 @@ class CreatureRenderer(context: Context) {
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = INK
         textAlign = Paint.Align.CENTER
-        // Имена над следами пишутся почерком Bad Script.
+        // Имена над следами пишутся почерком Marck Script.
         typeface = MapFonts.script(context)
     }
 
