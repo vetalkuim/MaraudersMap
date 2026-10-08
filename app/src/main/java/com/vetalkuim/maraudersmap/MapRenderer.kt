@@ -15,9 +15,8 @@ import android.os.SystemClock
 /**
  * Рисует обои по слоям:
  * 0 — пергамент ([drawBackground]), растянутый по принципу center-crop без искажений;
- * 1 — нарисованная карта ([drawMap]), вписанная в экран целиком.
- *
- * Следующие слои (имена, следы) рисуются поверх в [draw].
+ * 1 — нарисованная карта ([drawMap]), вписанная в экран целиком;
+ * 2 — путники со следами и подписями ([drawCreatures]).
  */
 class MapRenderer(private val context: Context) {
 
@@ -40,6 +39,11 @@ class MapRenderer(private val context: Context) {
             mapCache = null
         }
 
+    /** Слой 2; null — не рисуется. */
+    var creatures: MapCreatures? = null
+
+    private val creatureRenderer by lazy { CreatureRenderer(context) }
+
     var background: MapBackground = MapBackground.DEFAULT
         set(value) {
             field = value
@@ -56,27 +60,47 @@ class MapRenderer(private val context: Context) {
     /** true, пока идёт анимация и нужны следующие кадры. */
     val isAnimating: Boolean
         get() = background == MapBackground.UNFOLD &&
-            SystemClock.uptimeMillis() - unfoldStart < UNFOLD_TOTAL_MS + (if (mapImage != null) MAP_REVEAL_MS else 0L)
+            SystemClock.uptimeMillis() - unfoldStart < UNFOLD_TOTAL_MS + MAP_REVEAL_MS
+
+    /** true, пока лист разворачивается: путники в это время стоят. */
+    val isUnfolding: Boolean
+        get() = background == MapBackground.UNFOLD && SystemClock.uptimeMillis() - unfoldStart < UNFOLD_TOTAL_MS
 
     fun draw(canvas: Canvas) {
         canvas.drawColor(Color.BLACK)
         drawBackground(canvas)
         drawMap(canvas)
+        drawCreatures(canvas)
+    }
+
+    /** Непрозрачность слоёв поверх пергамента: в режиме раскрытия они проступают после разворота листа. */
+    private fun revealAlpha(): Int {
+        if (background != MapBackground.UNFOLD) return 255
+        val elapsed = SystemClock.uptimeMillis() - unfoldStart - UNFOLD_TOTAL_MS
+        return (easeInOut((elapsed.toFloat() / MAP_REVEAL_MS).coerceIn(0f, 1f)) * 255).toInt()
     }
 
     /** В режиме раскрытия карта проступает чернилами, когда лист уже развёрнут. */
     private fun drawMap(canvas: Canvas) {
         val image = mapImage ?: return
-        val alpha = if (background == MapBackground.UNFOLD) {
-            val elapsed = SystemClock.uptimeMillis() - unfoldStart - UNFOLD_TOTAL_MS
-            (easeInOut((elapsed.toFloat() / MAP_REVEAL_MS).coerceIn(0f, 1f)) * 255).toInt()
-        } else {
-            255
-        }
+        val alpha = revealAlpha()
         if (alpha <= 0) return
         val bitmap = mapBitmap(image, canvas.width, canvas.height) ?: return
         mapPaint.alpha = alpha
         canvas.drawBitmap(bitmap, 0f, 0f, mapPaint)
+    }
+
+    private fun drawCreatures(canvas: Canvas) {
+        val world = creatures ?: return
+        val alpha = revealAlpha()
+        if (alpha <= 0) return
+        if (alpha >= 255) {
+            creatureRenderer.draw(canvas, world)
+            return
+        }
+        val save = canvas.saveLayerAlpha(null, alpha)
+        creatureRenderer.draw(canvas, world)
+        canvas.restoreToCount(save)
     }
 
     /**

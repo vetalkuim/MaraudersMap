@@ -319,7 +319,7 @@ class SvgImage private constructor(
     }
 }
 
-private class AndroidPathSink(private val path: Path) : PathSink {
+internal class AndroidPathSink(private val path: Path) : PathSink {
     override fun moveTo(x: Float, y: Float) = path.moveTo(x, y)
     override fun lineTo(x: Float, y: Float) = path.lineTo(x, y)
     override fun quadTo(x1: Float, y1: Float, x: Float, y: Float) = path.quadTo(x1, y1, x, y)

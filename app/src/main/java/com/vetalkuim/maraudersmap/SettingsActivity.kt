@@ -236,6 +236,11 @@ class SettingsActivity : Activity() {
                 previewCustomVersion = customVersion
             }
             previewRenderer.background = background
+            // Превью в PREVIEW_DOWNSCALE раз меньше экрана — путники уменьшены так же.
+            previewRenderer.creatures = MapCreatures(metrics.density / PREVIEW_DOWNSCALE).apply {
+                resize(width.toFloat(), height.toFloat())
+                warmUp()
+            }
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             // Время старта анимации не задано, поэтому рисуется её последний кадр.
             previewRenderer.draw(Canvas(bitmap))
