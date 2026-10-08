@@ -44,6 +44,41 @@ class DementorTest {
     }
 
     @Test
+    fun `по умолчанию один дементор`() {
+        assertEquals(1, MapCreatures(dp).dementorCount)
+    }
+
+    @Test
+    fun `рядом с путником за спиной дементор разворачивается к нему лицом`() {
+        val world = world(MapCreatures.MAX_COUNT, travelers = MapCreatures.MAX_COUNT, seed = 3)
+        var turned = 0
+        world.run(300f) {
+            for (d in dementors) {
+                assertTrue(d.facing in -1f..1f)
+                val prey = d.prey
+                val looking = prey != null && (d.mode == Dementor.Mode.APPROACH || d.mode == Dementor.Mode.NEAR)
+                if (!looking) continue
+                val behind = (prey!!.x - d.x) * d.variant.heading.dx < -40f * dp
+                if (behind && d.variant.heading != Heading.UP && d.facing < 0f) turned++
+                // Голова смотрит в сторону путника.
+                if (d.gazeWeight > 0.9f && kotlin.math.abs(prey.x - d.x) > 60f * dp) {
+                    assertTrue(d.gaze * (prey.x - d.x) >= 0f || kotlin.math.abs(d.gaze) < 0.2f)
+                }
+            }
+        }
+        assertTrue("ни один дементор не развернулся к путнику", turned > 0)
+    }
+
+    @Test
+    fun `после подлёта дементор снова смотрит вперёд`() {
+        val world = world(MapCreatures.MAX_COUNT, travelers = MapCreatures.MAX_COUNT, seed = 3)
+        world.run(300f)
+        world.travelerCount = 0
+        world.run(MapCreatures.TURN_AROUND_S + 30f)
+        for (d in world.dementors) assertEquals(1f, d.facing, 0f)
+    }
+
+    @Test
     fun `лишние дементоры улетают, а новые прилетают с края`() {
         val world = world(5)
         world.dementorCount = 2
