@@ -30,3 +30,8 @@ android {
         jvmTarget = "17"
     }
 }
+
+dependencies {
+    // Только для юнит-тестов логики; в приложение не попадает.
+    testImplementation(libs.junit)
+}
