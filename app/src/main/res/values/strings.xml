@@ -23,7 +23,7 @@
     <string name="creatures_title">Обитатели карты</string>
     <string name="map_intensity">Интенсивность цвета карты: %1$d%%</string>
     <string name="travelers_title">Путники</string>
-    <string name="travelers_hint">Путник с пустым именем на карте не показывается</string>
+    <string name="travelers_hint">Путник с пустым именем ходит по карте без подписи</string>
     <string name="add_traveler">Добавить путника</string>
     <string name="remove_traveler">Удалить</string>
     <string name="traveler_name_hint">Имя путника</string>

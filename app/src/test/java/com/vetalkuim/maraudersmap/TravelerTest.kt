@@ -45,11 +45,24 @@ class TravelerTest {
     }
 
     @Test
-    fun `путники носят имена из настроек, пустые пропускаются`() {
+    fun `путники носят имена из настроек, с пустым именем — ходят без подписи`() {
         val world = world(0).apply { travelerNames = listOf("Гарри", " ", "", "Рон", "Гермиона") }
         repeat(30 * 5) { world.update(FRAME) }
-        assertEquals(3, world.travelerCount)
-        assertEquals(setOf("Гарри", "Рон", "Гермиона"), world.travelers.filter { !it.leaving }.map { it.name }.toSet())
+        assertEquals(5, world.travelerCount)
+        assertEquals(
+            listOf("", "", "Гарри", "Гермиона", "Рон"),
+            world.travelers.filter { !it.leaving }.map { it.name }.sortedBy { it },
+        )
+    }
+
+    @Test
+    fun `путнику без имени можно вписать имя на месте`() {
+        val world = world(0).apply { travelerNames = listOf("Гарри", "") }
+        repeat(30 * 5) { world.update(FRAME) }
+        val unnamed = world.travelers.single { it.name == "" }
+        world.travelerNames = listOf("Гарри", "Р")
+        assertEquals("Р", unnamed.name)
+        assertTrue(!unnamed.leaving)
     }
 
     @Test

@@ -109,12 +109,13 @@ class MapCreatures(
         private set
 
     /**
-     * Имена путников из настроек; пустые пропускаются. Сколько имён — столько путников на экране.
+     * Имена путников из настроек. Сколько строк — столько путников на экране;
+     * путник с пустым именем ходит без подписи.
      * Путник, чьё имя исправили, переименовывается на месте; тот, чьё имя удалили, уходит за край.
      */
     var travelerNames: List<String> = NAMES.take(DEFAULT_TRAVELERS)
         set(value) {
-            field = value.map(String::trim).filter(String::isNotEmpty).take(MAX_TRAVELERS)
+            field = value.map(String::trim).take(MAX_TRAVELERS)
             renameTravelers()
         }
 
