@@ -10,13 +10,17 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
-/** След ступни. [angle] — направление движения в радианах, носок смотрит туда же. */
+/**
+ * След ступни. [angle] — направление движения в радианах, носок смотрит туда же.
+ * [chill] — множитель непрозрачности: след рядом с дементором бледнее, будто его выстудило.
+ */
 class Footprint(
     var x: Float,
     var y: Float,
     val angle: Float,
     val left: Boolean,
     val born: Float,
+    val chill: Float = 1f,
 )
 
 /** Путник: идёт по плавной кривой от точки к точке и оставляет следы. */
@@ -322,6 +326,12 @@ class MapCreatures(
         t.targetY = (t.y + sin(away) * FLEE_DP * dp).coerceIn(margin, max(margin, height - margin))
     }
 
+    /** Множитель непрозрачности следа в точке: чем ближе дементор, тем бледнее. */
+    fun chillAt(x: Float, y: Float): Float {
+        val d = nearestDementor(x, y) ?: return 1f
+        return coldChill(hypot(d.x - x, d.y - y) / dp)
+    }
+
     private fun nearestDementor(x: Float, y: Float): Dementor? =
         dementors.minByOrNull { hypot(it.x - x, it.y - y) }
 
@@ -329,12 +339,15 @@ class MapCreatures(
         // Левая нога — слева от линии движения: при оси y вниз это (sin, −cos).
         val side = if (t.nextLeft) 1f else -1f
         val offset = FOOT_OFFSET_DP * dp * side
+        val x = t.x + sin(t.heading) * offset
+        val y = t.y - cos(t.heading) * offset
         val foot = Footprint(
-            x = t.x + sin(t.heading) * offset,
-            y = t.y - cos(t.heading) * offset,
+            x = x,
+            y = y,
             angle = t.heading,
             left = t.nextLeft,
             born = time,
+            chill = chillAt(x, y),
         )
         footprints.addLast(foot)
         t.lastFoot = foot
@@ -593,6 +606,14 @@ class MapCreatures(
             age < FOOT_FADE_IN_S -> age / FOOT_FADE_IN_S
             else -> 1f - (age - FOOT_FADE_IN_S) / (life - FOOT_FADE_IN_S)
         }
+
+        /** Холод: ближе [COLD_DP] к дементору след бледнеет, вплотную — до [COLD_MIN]. */
+        const val COLD_DP = 160f
+        const val COLD_MIN = 0.35f
+
+        /** Множитель непрозрачности следа на расстоянии [distanceDp] от дементора. */
+        fun coldChill(distanceDp: Float): Float =
+            if (distanceDp >= COLD_DP) 1f else COLD_MIN + (1f - COLD_MIN) * (distanceDp / COLD_DP).coerceAtLeast(0f)
 
         /** Разница углов, приведённая к (−π, π]. */
         fun angleDiff(a: Float, b: Float): Float {

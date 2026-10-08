@@ -94,7 +94,7 @@ class CreatureRenderer(context: Context) {
     private fun drawFootprints(canvas: Canvas, creatures: MapCreatures) {
         val scale = FOOT_LENGTH_DP * creatures.dp / FOOT_SVG_LENGTH
         for (foot in creatures.footprints) {
-            val opacity = MapCreatures.footprintOpacity(creatures.time - foot.born)
+            val opacity = MapCreatures.footprintOpacity(creatures.time - foot.born) * foot.chill
             if (opacity <= 0f) continue
             footPaint.alpha = (MapCreatures.FOOT_MAX_ALPHA * opacity).toInt()
             val save = canvas.save()
