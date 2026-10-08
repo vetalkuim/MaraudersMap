@@ -42,6 +42,12 @@ class Traveler(val name: String?, var x: Float, var y: Float, var heading: Float
     var labelX = Float.NaN
     var labelY = Float.NaN
     var lastFoot: Footprint? = null
+
+    /** До этого времени путник идёт быстрее — убегает от дементора. */
+    var hurryUntil = 0f
+
+    /** Раньше этого времени новый испуг не сбивает с пути. */
+    var calmUntil = 0f
 }
 
 /**
@@ -58,6 +64,27 @@ class Dementor(val variant: DementorVariant, var x: Float, var y: Float, val see
 
     /** Лишний после уменьшения числа дементоров: улетит, и его не заменят. */
     var retiring = false
+
+    var mode = Mode.CRUISE
+    var modeUntil = 0f
+    var nextApproachAt = 0f
+
+    /** Путник, к которому дементор подлетает или возле которого держится. */
+    var prey: Traveler? = null
+
+    enum class Mode {
+        /** Плывёт по ветру. */
+        CRUISE,
+
+        /** Подлетает к путнику впереди. */
+        APPROACH,
+
+        /** Опустился к путнику: меньше и быстрее. */
+        NEAR,
+
+        /** Взлетает и уплывает подальше. */
+        LEAVE,
+    }
 }
 
 /**
@@ -148,7 +175,7 @@ class MapCreatures(
                 random.range(width * 0.15f, width * 0.85f),
                 random.range(height * 0.15f, height * 0.85f),
                 random.nextFloat() * 100f,
-            )
+            ).apply { nextApproachAt = time + random.range(FIRST_APPROACH_MIN_S, FIRST_APPROACH_MAX_S) }
         }
     }
 
@@ -247,7 +274,9 @@ class MapCreatures(
     }
 
     private fun moveTraveler(t: Traveler, dt: Float) {
-        val speed = SPEED_DP * dp
+        avoidDementors(t)
+        val hurry = time < t.hurryUntil
+        val speed = SPEED_DP * dp * (if (hurry) HURRY_FACTOR else 1f)
         val dx = t.targetX - t.x
         val dy = t.targetY - t.y
         val distance = hypot(dx, dy)
@@ -262,7 +291,8 @@ class MapCreatures(
         // Лёгкое виляние, чтобы длинный переход не выглядел прочерченным по линейке.
         val desired = atan2(t.targetY - t.y, t.targetX - t.x) +
             MEANDER * sin(t.walked / (MEANDER_WAVE_DP * dp) + t.meanderPhase)
-        val maxTurn = max(TURN_RATE, 2f * speed / max(distance, 1f)) * dt
+        val turnRate = if (hurry) TURN_RATE * 2f else TURN_RATE
+        val maxTurn = max(turnRate, 2f * speed / max(distance, 1f)) * dt
         t.heading += angleDiff(desired, t.heading).coerceIn(-maxTurn, maxTurn)
 
         val step = speed * dt
@@ -276,6 +306,24 @@ class MapCreatures(
         }
         updateLabel(t, dt)
     }
+
+    /** Путник боится дементоров: если дементор близко, сворачивает от него и ненадолго ускоряет шаг. */
+    private fun avoidDementors(t: Traveler) {
+        if (time < t.calmUntil) return
+        val d = nearestDementor(t.x, t.y) ?: return
+        if (hypot(d.x - t.x, d.y - t.y) > FEAR_DP * dp) return
+        t.hurryUntil = time + HURRY_S
+        t.calmUntil = time + CALM_S
+        // Уходящий за край путник просто прибавляет шаг: его цель и так подальше отсюда.
+        if (t.leaving) return
+        val away = atan2(t.y - d.y, t.x - d.x) + random.range(-FLEE_SPREAD, FLEE_SPREAD)
+        val margin = EDGE_MARGIN_DP * dp
+        t.targetX = (t.x + cos(away) * FLEE_DP * dp).coerceIn(margin, max(margin, width - margin))
+        t.targetY = (t.y + sin(away) * FLEE_DP * dp).coerceIn(margin, max(margin, height - margin))
+    }
+
+    private fun nearestDementor(x: Float, y: Float): Dementor? =
+        dementors.minByOrNull { hypot(it.x - x, it.y - y) }
 
     private fun leaveFootprint(t: Traveler) {
         // Левая нога — слева от линии движения: при оси y вниз это (sin, −cos).
@@ -331,7 +379,61 @@ class MapCreatures(
             Heading.RIGHT -> -halfW - gap to random.range(height * 0.15f, height * 0.85f)
             Heading.UP -> random.range(width * 0.15f, width * 0.85f) to height + halfH + gap
         }
-        return Dementor(variant, x, y, random.nextFloat() * 100f)
+        return Dementor(variant, x, y, random.nextFloat() * 100f).apply {
+            nextApproachAt = time + random.range(FIRST_APPROACH_MIN_S, FIRST_APPROACH_MAX_S)
+        }
+    }
+
+    /** Время от времени дементор выбирает путника впереди, подлетает, держится рядом и улетает. */
+    private fun updateMode(d: Dementor) {
+        val prey = d.prey
+        val preyLost = prey == null || prey !in travelers
+        when (d.mode) {
+            Dementor.Mode.CRUISE -> {
+                if (time < d.nextApproachAt || d.retiring) return
+                val target = pickPrey(d)
+                if (target == null) {
+                    d.nextApproachAt = time + RETRY_APPROACH_S
+                } else {
+                    d.prey = target
+                    d.mode = Dementor.Mode.APPROACH
+                    d.modeUntil = time + APPROACH_TIMEOUT_S
+                }
+            }
+            Dementor.Mode.APPROACH -> when {
+                preyLost || time >= d.modeUntil || !isAhead(d, prey!!, -NEAR_DP * dp) -> leave(d)
+                hypot(prey.x - d.x, prey.y - d.y) < NEAR_DP * dp -> {
+                    d.mode = Dementor.Mode.NEAR
+                    d.modeUntil = time + random.range(NEAR_MIN_S, NEAR_MAX_S)
+                }
+            }
+            Dementor.Mode.NEAR -> if (preyLost || time >= d.modeUntil) leave(d)
+            Dementor.Mode.LEAVE -> if (time >= d.modeUntil) {
+                d.mode = Dementor.Mode.CRUISE
+                d.prey = null
+                d.nextApproachAt = time + random.range(APPROACH_MIN_S, APPROACH_MAX_S)
+            }
+        }
+    }
+
+    private fun leave(d: Dementor) {
+        d.mode = Dementor.Mode.LEAVE
+        d.modeUntil = time + LEAVE_S
+    }
+
+    /** Ближайший путник впереди: назад дементор не летит. */
+    private fun pickPrey(d: Dementor): Traveler? = travelers
+        .filter { !it.leaving && isAhead(d, it, NEAR_DP * dp * 0.5f) && isAhead(d, it, -PREY_RANGE_DP * dp, far = true) }
+        .minByOrNull { hypot(it.x - d.x, it.y - d.y) }
+
+    /**
+     * Путник впереди дементора не ближе [minAhead] по направлению полёта.
+     * С [far] проверяется обратное: не дальше −[minAhead].
+     */
+    private fun isAhead(d: Dementor, t: Traveler, minAhead: Float, far: Boolean = false): Boolean {
+        val h = d.variant.heading
+        val ahead = (t.x - d.x) * h.dx + (t.y - d.y) * h.dy
+        return if (far) ahead <= -minAhead else ahead >= minAhead
     }
 
     /** Высота картинки дементора на экране. */
@@ -351,9 +453,37 @@ class MapCreatures(
         val across = d.x * px + d.y * py
         val extent = if (heading == Heading.UP) width else height
 
-        val forward = CRUISE_DP * dp
+        updateMode(d)
+        val prey = d.prey
+        var forward = CRUISE_DP * dp
         var lateral = WIND_DP * dp *
             (0.6f * sin(time * 0.35f + d.seed) + 0.4f * sin(time * 0.83f + d.seed * 2.3f))
+        var scale = 1f
+        when (d.mode) {
+            Dementor.Mode.CRUISE -> Unit
+            Dementor.Mode.APPROACH -> if (prey != null) {
+                forward = APPROACH_DP * dp
+                val preyAcross = prey.x * px + prey.y * py
+                lateral += ((preyAcross - across) * APPROACH_GAIN).coerceIn(-APPROACH_DP * dp, APPROACH_DP * dp)
+            }
+            Dementor.Mode.NEAR -> if (prey != null) {
+                // Держится рядом с путником и двигается быстрее, чем на подлёте.
+                scale = NEAR_SCALE
+                val nearMax = APPROACH_DP * dp * NEAR_SPEED_FACTOR
+                val preyAlong = prey.x * heading.dx + prey.y * heading.dy
+                val along = d.x * heading.dx + d.y * heading.dy
+                forward = ((preyAlong - along) * NEAR_GAIN).coerceIn(0f, nearMax)
+                val preyAcross = prey.x * px + prey.y * py
+                lateral = ((preyAcross - across) * NEAR_GAIN).coerceIn(-nearMax, nearMax)
+            }
+            Dementor.Mode.LEAVE -> {
+                forward = LEAVE_DP * dp
+                if (prey != null) {
+                    val preyAcross = prey.x * px + prey.y * py
+                    lateral += if (preyAcross > across) -LEAVE_DP * dp else LEAVE_DP * dp
+                }
+            }
+        }
         // Ветер не уносит за боковые края: у границы полосы дементора мягко возвращает.
         val low = extent * BAND
         val high = extent * (1f - BAND)
@@ -373,7 +503,7 @@ class MapCreatures(
         }
         d.x += d.vx * dt
         d.y += d.vy * dt
-        d.scale += (1f - d.scale) * (1f - exp(-dt / SCALE_LAG_S))
+        d.scale += (scale - d.scale) * (1f - exp(-dt / SCALE_LAG_S))
     }
 
     private fun isOutside(x: Float, y: Float, margin: Float) =
@@ -422,6 +552,32 @@ class MapCreatures(
         private const val RETURN_RATE = 0.4f
         private const val DEMENTOR_INERTIA_S = 0.8f
         private const val SCALE_LAG_S = 0.6f
+
+        private const val APPROACH_DP = 26f
+        private const val APPROACH_GAIN = 0.6f
+        private const val NEAR_DP = 150f
+        private const val NEAR_GAIN = 1.5f
+        private const val NEAR_SPEED_FACTOR = 1.5f
+        const val NEAR_SCALE = 0.85f
+        private const val LEAVE_DP = 32f
+        private const val PREY_RANGE_DP = 450f
+        private const val FIRST_APPROACH_MIN_S = 3f
+        private const val FIRST_APPROACH_MAX_S = 10f
+        private const val APPROACH_MIN_S = 15f
+        private const val APPROACH_MAX_S = 30f
+        private const val RETRY_APPROACH_S = 3f
+        private const val APPROACH_TIMEOUT_S = 15f
+        private const val NEAR_MIN_S = 3f
+        private const val NEAR_MAX_S = 5f
+        private const val LEAVE_S = 5f
+
+        /** Путник пугается дементора ближе этого расстояния. */
+        const val FEAR_DP = 140f
+        const val HURRY_FACTOR = 1.6f
+        private const val HURRY_S = 2f
+        private const val CALM_S = 2.5f
+        private const val FLEE_DP = 160f
+        private const val FLEE_SPREAD = 0.5f
 
         /** Картинка с полуразмерами [halfW]×[halfH] целиком за краем, к которому летит. */
         fun isPastExit(heading: Heading, x: Float, y: Float, halfW: Float, halfH: Float, width: Float, height: Float) =
