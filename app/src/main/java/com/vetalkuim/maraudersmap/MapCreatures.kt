@@ -45,7 +45,23 @@ class Traveler(val name: String?, var x: Float, var y: Float, var heading: Float
 }
 
 /**
- * Слой 2 без Android: путники и их следы. Все размеры в пикселях, [dp] — пикселей в одном dp,
+ * Дементор: плывёт над картой по ветру, всегда лицом вперёд — в сторону [DementorVariant.heading].
+ * Не разворачивается: пересекает экран и улетает за край, а вместо него прилетает другой.
+ * Координаты — центр картинки.
+ */
+class Dementor(val variant: DementorVariant, var x: Float, var y: Float, val seed: Float) {
+    var vx = 0f
+    var vy = 0f
+
+    /** Масштаб картинки: меньше 1, когда дементор опускается к путнику. */
+    var scale = 1f
+
+    /** Лишний после уменьшения числа дементоров: улетит, и его не заменят. */
+    var retiring = false
+}
+
+/**
+ * Слой 2 без Android: путники с их следами и дементоры. Все размеры в пикселях, [dp] — пикселей в одном dp,
  * время — в секундах. Отрисовкой занимается [CreatureRenderer].
  */
 class MapCreatures(
@@ -66,12 +82,19 @@ class MapCreatures(
             field = value.coerceIn(0, MAX_COUNT)
         }
 
+    var dementorCount = DEFAULT_DEMENTORS
+        set(value) {
+            field = value.coerceIn(0, MAX_COUNT)
+        }
+
     val travelers = mutableListOf<Traveler>()
+    val dementors = mutableListOf<Dementor>()
     val footprints = ArrayDeque<Footprint>()
 
     /** Есть что рисовать и двигать; без этого кадры не нужны. */
     val isIdle: Boolean
-        get() = travelers.isEmpty() && footprints.isEmpty() && travelerCount == 0
+        get() = travelers.isEmpty() && footprints.isEmpty() && dementors.isEmpty() &&
+            travelerCount == 0 && dementorCount == 0
 
     /**
      * Меняет размер мира. После поворота экрана все координаты пересчитываются пропорционально,
@@ -89,6 +112,9 @@ class MapCreatures(
             }
             for (f in footprints) {
                 f.x *= sx; f.y *= sy
+            }
+            for (d in dementors) {
+                d.x *= sx; d.y *= sy
             }
         }
         width = newWidth
@@ -115,6 +141,15 @@ class MapCreatures(
             val y = random.range(EDGE_MARGIN_DP * dp, height - EDGE_MARGIN_DP * dp)
             travelers += newTraveler(x, y, random.nextFloat() * 2f * PI.toFloat())
         }
+        while (dementors.size < dementorCount) {
+            val variant = DementorVariant.pick(dementors.map { it.variant }, random)
+            dementors += Dementor(
+                variant,
+                random.range(width * 0.15f, width * 0.85f),
+                random.range(height * 0.15f, height * 0.85f),
+                random.nextFloat() * 100f,
+            )
+        }
     }
 
     fun update(dtSeconds: Float) {
@@ -124,6 +159,9 @@ class MapCreatures(
         travelers.removeAll { it.leaving && isOutside(it.x, it.y, LEAVE_MARGIN_DP * dp) }
         balanceTravelers()
         for (t in travelers) moveTraveler(t, dt)
+        dementors.removeAll { isGone(it) }
+        balanceDementors()
+        for (d in dementors) moveDementor(d, dt)
         while (footprints.isNotEmpty() && time - footprints.first().born > FOOT_LIFE_S) {
             footprints.removeFirst()
         }
@@ -269,12 +307,82 @@ class MapCreatures(
         t.labelY += (goalY - t.labelY) * k
     }
 
+    /** Лишние дементоры просто долетают до края; улетевших заменяют новые. */
+    private fun balanceDementors() {
+        var staying = dementors.count { !it.retiring }
+        for (d in dementors) {
+            if (staying <= dementorCount) break
+            if (!d.retiring) {
+                d.retiring = true
+                staying--
+            }
+        }
+        while (dementors.size < dementorCount) dementors += enteringDementor()
+    }
+
+    /** Новый дементор появляется за тем краем, откуда он полетит лицом вперёд. */
+    private fun enteringDementor(): Dementor {
+        val variant = DementorVariant.pick(dementors.map { it.variant }, random)
+        val halfW = dementorHeight(1f) * variant.aspect / 2
+        val halfH = dementorHeight(1f) / 2
+        val gap = 2f * dp
+        val (x, y) = when (variant.heading) {
+            Heading.LEFT -> width + halfW + gap to random.range(height * 0.15f, height * 0.85f)
+            Heading.RIGHT -> -halfW - gap to random.range(height * 0.15f, height * 0.85f)
+            Heading.UP -> random.range(width * 0.15f, width * 0.85f) to height + halfH + gap
+        }
+        return Dementor(variant, x, y, random.nextFloat() * 100f)
+    }
+
+    /** Высота картинки дементора на экране. */
+    fun dementorHeight(scale: Float): Float = DEMENTOR_HEIGHT_DP * dp * scale
+
+    /** Дементор целиком улетел за край, к которому летел, — пора заменить его новым. */
+    fun isGone(d: Dementor): Boolean {
+        val h = dementorHeight(d.scale)
+        return isPastExit(d.variant.heading, d.x, d.y, h * d.variant.aspect / 2, h / 2, width, height)
+    }
+
+    private fun moveDementor(d: Dementor, dt: Float) {
+        val heading = d.variant.heading
+        // Поперёк направления полёта: для левых и правых — по вертикали, для летящего вверх — по горизонтали.
+        val px = -heading.dy
+        val py = heading.dx
+        val across = d.x * px + d.y * py
+        val extent = if (heading == Heading.UP) width else height
+
+        val forward = CRUISE_DP * dp
+        var lateral = WIND_DP * dp *
+            (0.6f * sin(time * 0.35f + d.seed) + 0.4f * sin(time * 0.83f + d.seed * 2.3f))
+        // Ветер не уносит за боковые края: у границы полосы дементора мягко возвращает.
+        val low = extent * BAND
+        val high = extent * (1f - BAND)
+        if (across < low) lateral += (low - across) * RETURN_RATE
+        if (across > high) lateral -= (across - high) * RETURN_RATE
+
+        val k = 1f - exp(-dt / DEMENTOR_INERTIA_S)
+        d.vx += (heading.dx * forward + px * lateral - d.vx) * k
+        d.vy += (heading.dy * forward + py * lateral - d.vy) * k
+
+        // Только вперёд: задом наперёд дементор не летает.
+        val along = d.vx * heading.dx + d.vy * heading.dy
+        val minForward = MIN_FORWARD_DP * dp
+        if (along < minForward) {
+            d.vx += heading.dx * (minForward - along)
+            d.vy += heading.dy * (minForward - along)
+        }
+        d.x += d.vx * dt
+        d.y += d.vy * dt
+        d.scale += (1f - d.scale) * (1f - exp(-dt / SCALE_LAG_S))
+    }
+
     private fun isOutside(x: Float, y: Float, margin: Float) =
         x < -margin || x > width + margin || y < -margin || y > height + margin
 
     companion object {
         const val MAX_COUNT = 5
         const val DEFAULT_TRAVELERS = 3
+        const val DEFAULT_DEMENTORS = 2
 
         /** Имена по порядку; новый путник берёт первое свободное. */
         val NAMES = listOf("Путник", "Странница", "Бродяга", "Скиталец", "Пилигрим")
@@ -304,6 +412,24 @@ class MapCreatures(
         private const val MAX_STEP_S = 0.1f
         private const val WARM_UP_S = 4.5f
         private const val WARM_UP_STEP_S = 1f / 30f
+
+        /** Высота дементора на экране при обычном масштабе. */
+        const val DEMENTOR_HEIGHT_DP = 130f
+        private const val CRUISE_DP = 20f
+        private const val MIN_FORWARD_DP = 6f
+        private const val WIND_DP = 9f
+        private const val BAND = 0.12f
+        private const val RETURN_RATE = 0.4f
+        private const val DEMENTOR_INERTIA_S = 0.8f
+        private const val SCALE_LAG_S = 0.6f
+
+        /** Картинка с полуразмерами [halfW]×[halfH] целиком за краем, к которому летит. */
+        fun isPastExit(heading: Heading, x: Float, y: Float, halfW: Float, halfH: Float, width: Float, height: Float) =
+            when (heading) {
+                Heading.LEFT -> x + halfW < 0f
+                Heading.RIGHT -> x - halfW > width
+                Heading.UP -> y + halfH < 0f
+            }
 
         /** Непрозрачность следа 0..1: проявляется за [FOOT_FADE_IN_S], затем равномерно гаснет. */
         fun footprintOpacity(age: Float, life: Float = FOOT_LIFE_S): Float = when {
