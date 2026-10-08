@@ -7,7 +7,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
-import android.graphics.Typeface
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sin
@@ -27,11 +26,8 @@ class CreatureRenderer(context: Context) {
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = INK
         textAlign = Paint.Align.CENTER
-        typeface = try {
-            context.resources.getFont(R.font.bad_script)
-        } catch (e: Exception) {
-            Typeface.create(Typeface.SERIF, Typeface.ITALIC)
-        }
+        // Имена над следами пишутся почерком Bad Script.
+        typeface = MapFonts.script(context)
     }
 
     /** Правая ступня из `footprint_right.svg`: носок вверху, центр — в начале координат. */
