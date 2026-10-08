@@ -4,7 +4,10 @@ import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
 import android.service.wallpaper.WallpaperService
+import android.util.Log
 import android.view.SurfaceHolder
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class MapWallpaperService : WallpaperService() {
 
@@ -17,16 +20,21 @@ class MapWallpaperService : WallpaperService() {
         private val prefs = MapPrefs.get(this@MapWallpaperService)
         private var visible = false
         private val drawRunnable = Runnable { drawFrame() }
+        private val loader: ExecutorService = Executors.newSingleThreadExecutor()
+        private var mapGeneration = 0
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
             renderer.background = MapPrefs.background(prefs)
             prefs.registerOnSharedPreferenceChangeListener(this)
+            loadMap()
         }
 
         override fun onDestroy() {
             prefs.unregisterOnSharedPreferenceChangeListener(this)
             handler.removeCallbacks(drawRunnable)
+            mapGeneration++
+            loader.shutdownNow()
             renderer.release()
             super.onDestroy()
         }
@@ -53,10 +61,41 @@ class MapWallpaperService : WallpaperService() {
         }
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String?) {
-            if (key != MapPrefs.KEY_BACKGROUND) return
-            renderer.background = MapPrefs.background(sharedPreferences)
-            renderer.restartUnfold()
-            drawFrame()
+            when (key) {
+                MapPrefs.KEY_BACKGROUND -> {
+                    renderer.background = MapPrefs.background(sharedPreferences)
+                    renderer.restartUnfold()
+                    drawFrame()
+                }
+                MapPrefs.KEY_MAP_LAYER, MapPrefs.KEY_CUSTOM_STAMP -> loadMap()
+            }
+        }
+
+        /** Разбор SVG занимает заметное время, поэтому слой карты грузится в фоне. */
+        private fun loadMap() {
+            val generation = ++mapGeneration
+            val layer = MapPrefs.mapLayer(prefs)
+            if (layer == MapLayer.NONE) {
+                renderer.mapImage = null
+                if (visible) drawFrame()
+                return
+            }
+            loader.execute {
+                val image = try {
+                    MapLayers.load(this@MapWallpaperService, layer)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Cannot load map layer $layer", e)
+                    null
+                } catch (e: OutOfMemoryError) {
+                    Log.w(TAG, "Map layer $layer is too large", e)
+                    null
+                }
+                handler.post {
+                    if (generation != mapGeneration) return@post
+                    renderer.mapImage = image
+                    if (visible) drawFrame()
+                }
+            }
         }
 
         private fun drawFrame() {
@@ -81,5 +120,6 @@ class MapWallpaperService : WallpaperService() {
 
     private companion object {
         const val FRAME_DELAY_MS = 16L
+        const val TAG = "MapWallpaper"
     }
 }
