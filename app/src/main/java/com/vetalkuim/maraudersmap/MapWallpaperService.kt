@@ -13,7 +13,7 @@ class MapWallpaperService : WallpaperService() {
     private inner class MapEngine : Engine(), SharedPreferences.OnSharedPreferenceChangeListener {
 
         private val handler = Handler(Looper.getMainLooper())
-        private val renderer = MapRenderer(resources)
+        private val renderer = MapRenderer(this@MapWallpaperService)
         private val prefs = MapPrefs.get(this@MapWallpaperService)
         private var visible = false
         private val drawRunnable = Runnable { drawFrame() }
@@ -53,9 +53,14 @@ class MapWallpaperService : WallpaperService() {
         }
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String?) {
-            if (key != MapPrefs.KEY_BACKGROUND) return
-            renderer.background = MapPrefs.background(sharedPreferences)
-            renderer.restartUnfold()
+            when (key) {
+                MapPrefs.KEY_BACKGROUND -> {
+                    renderer.background = MapPrefs.background(sharedPreferences)
+                    renderer.restartUnfold()
+                }
+                MapPrefs.KEY_CUSTOM_VERSION -> renderer.invalidateCustom()
+                else -> return
+            }
             drawFrame()
         }
 

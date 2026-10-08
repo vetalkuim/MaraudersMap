@@ -49,6 +49,16 @@
             android:layout_marginTop="8dp" />
 
         <Button
+            android:id="@+id/pick_image"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="@color/parchment"
+            android:text="@string/pick_image"
+            android:textColor="@color/ink"
+            android:visibility="gone" />
+
+        <Button
             android:id="@+id/set_wallpaper"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
