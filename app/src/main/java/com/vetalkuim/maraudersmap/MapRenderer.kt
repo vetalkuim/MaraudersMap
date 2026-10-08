@@ -39,6 +39,12 @@ class MapRenderer(private val context: Context) {
             mapCache = null
         }
 
+    /**
+     * Интенсивность цвета карты в процентах: до 100 — чернила бледнее,
+     * выше 100 — карта накладывается второй раз и чернила гуще.
+     */
+    var mapIntensity: Int = MapPrefs.DEFAULT_MAP_INTENSITY
+
     /** Слой 2; null — не рисуется. */
     var creatures: MapCreatures? = null
 
@@ -91,9 +97,15 @@ class MapRenderer(private val context: Context) {
         val image = mapImage ?: return
         val alpha = revealAlpha()
         if (alpha <= 0) return
+        val strength = alpha * mapIntensity / 100
+        if (strength <= 0) return
         val bitmap = mapBitmap(image, canvas.width, canvas.height) ?: return
-        mapPaint.alpha = alpha
+        mapPaint.alpha = strength.coerceAtMost(255)
         canvas.drawBitmap(bitmap, 0f, 0f, mapPaint)
+        if (strength > 255) {
+            mapPaint.alpha = (strength - 255).coerceAtMost(255)
+            canvas.drawBitmap(bitmap, 0f, 0f, mapPaint)
+        }
     }
 
     private fun drawCreatures(canvas: Canvas) {

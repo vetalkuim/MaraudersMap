@@ -34,7 +34,8 @@ class MapWallpaperService : WallpaperService() {
             super.onCreate(surfaceHolder)
             renderer.background = MapPrefs.background(prefs)
             renderer.creatures = creatures
-            creatures.travelerCount = MapPrefs.travelerCount(prefs)
+            renderer.mapIntensity = MapPrefs.mapIntensity(prefs)
+            creatures.travelerNames = MapPrefs.travelerNames(prefs)
             creatures.dementorCount = MapPrefs.dementorCount(prefs)
             prefs.registerOnSharedPreferenceChangeListener(this)
             loadMap()
@@ -102,9 +103,13 @@ class MapWallpaperService : WallpaperService() {
                 }
                 MapPrefs.KEY_MAP_LAYER, MapPrefs.KEY_CUSTOM_STAMP -> loadMap()
                 // Новые приходят с краёв, лишние уходят за край — никто не исчезает на месте.
-                MapPrefs.KEY_TRAVELERS, MapPrefs.KEY_DEMENTORS -> {
-                    creatures.travelerCount = MapPrefs.travelerCount(sharedPreferences)
+                MapPrefs.KEY_TRAVELER_NAMES, MapPrefs.KEY_DEMENTORS -> {
+                    creatures.travelerNames = MapPrefs.travelerNames(sharedPreferences)
                     creatures.dementorCount = MapPrefs.dementorCount(sharedPreferences)
+                    if (visible) drawFrame()
+                }
+                MapPrefs.KEY_MAP_INTENSITY -> {
+                    renderer.mapIntensity = MapPrefs.mapIntensity(sharedPreferences)
                     if (visible) drawFrame()
                 }
             }

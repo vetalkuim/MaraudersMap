@@ -93,6 +93,22 @@
             android:textColor="@color/ink" />
 
         <TextView
+            android:id="@+id/map_intensity_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textColor="@color/parchment"
+            android:textSize="16sp" />
+
+        <SeekBar
+            android:id="@+id/map_intensity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:progressTint="@color/parchment"
+            android:thumbTint="@color/parchment" />
+
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
@@ -103,26 +119,10 @@
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/traveler_count_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textColor="@color/parchment"
-            android:textSize="16sp" />
-
-        <SeekBar
-            android:id="@+id/traveler_count"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:progressTint="@color/parchment"
-            android:thumbTint="@color/parchment" />
-
-        <TextView
             android:id="@+id/dementor_count_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="8dp"
             android:textColor="@color/parchment"
             android:textSize="16sp" />
 
@@ -133,6 +133,37 @@
             android:layout_marginTop="4dp"
             android:progressTint="@color/parchment"
             android:thumbTint="@color/parchment" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/travelers_title"
+            android:textColor="@color/parchment"
+            android:textSize="16sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/travelers_hint"
+            android:textColor="@color/parchment_dark"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/add_traveler"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="@color/parchment"
+            android:text="@string/add_traveler"
+            android:textColor="@color/ink" />
+
+        <LinearLayout
+            android:id="@+id/traveler_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
 
         <Button
             android:id="@+id/set_wallpaper"

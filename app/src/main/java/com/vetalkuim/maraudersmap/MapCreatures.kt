@@ -24,7 +24,7 @@ class Footprint(
 )
 
 /** Путник: идёт по плавной кривой от точки к точке и оставляет следы. */
-class Traveler(val name: String?, var x: Float, var y: Float, var heading: Float) {
+class Traveler(var name: String?, var x: Float, var y: Float, var heading: Float) {
     var targetX = x
     var targetY = y
 
@@ -108,9 +108,21 @@ class MapCreatures(
     var time = 0f
         private set
 
-    var travelerCount = DEFAULT_TRAVELERS
+    /**
+     * Имена путников из настроек; пустые пропускаются. Сколько имён — столько путников на экране.
+     * Путник, чьё имя исправили, переименовывается на месте; тот, чьё имя удалили, уходит за край.
+     */
+    var travelerNames: List<String> = NAMES.take(DEFAULT_TRAVELERS)
         set(value) {
-            field = value.coerceIn(0, MAX_COUNT)
+            field = value.map(String::trim).filter(String::isNotEmpty).take(MAX_TRAVELERS)
+            renameTravelers()
+        }
+
+    /** Число путников; запись задаёт им имена по умолчанию из [NAMES]. */
+    var travelerCount: Int
+        get() = travelerNames.size
+        set(value) {
+            travelerNames = NAMES.take(value.coerceIn(0, NAMES.size))
         }
 
     var dementorCount = DEFAULT_DEMENTORS
@@ -211,9 +223,29 @@ class MapCreatures(
         while (travelers.size < travelerCount) travelers += enteringTraveler()
     }
 
+    /** Имена из [travelerNames], которые не носит ни один остающийся путник (с учётом повторов). */
+    private fun freeNames(): MutableList<String> {
+        val free = travelerNames.toMutableList()
+        for (t in travelers) {
+            if (!t.leaving) t.name?.let { free.remove(it) }
+        }
+        return free
+    }
+
+    /** Путники с исчезнувшими именами берут новые имена из списка, а если их не хватает — уходят. */
+    private fun renameTravelers() {
+        val free = travelerNames.toMutableList()
+        val unnamed = travelers.filter { t -> !t.leaving && t.name?.let { free.remove(it) } != true }
+        for (t in unnamed) {
+            if (free.isNotEmpty()) t.name = free.removeAt(0) else startLeaving(t)
+        }
+    }
+
     private fun newTraveler(x: Float, y: Float, heading: Float): Traveler {
-        val used = travelers.mapNotNullTo(HashSet()) { it.name }
-        val name = NAMES.firstOrNull { it !in used }
+        // Имя того, кто ещё уходит за край, — только если других свободных нет.
+        val free = freeNames()
+        val leaving = travelers.filter { it.leaving }.mapNotNullTo(HashSet()) { it.name }
+        val name = free.firstOrNull { it !in leaving } ?: free.firstOrNull()
         return Traveler(name, x, y, heading).apply {
             nextLeft = random.nextBoolean()
             meanderPhase = random.nextFloat() * 2f * PI.toFloat()
@@ -525,10 +557,13 @@ class MapCreatures(
 
     companion object {
         const val MAX_COUNT = 5
+
+        /** Сколько путников можно завести в настройках. */
+        const val MAX_TRAVELERS = 10
         const val DEFAULT_TRAVELERS = 3
         const val DEFAULT_DEMENTORS = 2
 
-        /** Имена по порядку; новый путник берёт первое свободное. */
+        /** Имена по умолчанию: первые [DEFAULT_TRAVELERS] — для новых настроек. */
         val NAMES = listOf("Путник", "Странница", "Бродяга", "Скиталец", "Пилигрим")
 
         const val STEP_DP = 30f
