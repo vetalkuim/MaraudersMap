@@ -460,9 +460,10 @@ class MapCreatures(
 
     private fun moveDementor(d: Dementor, dt: Float) {
         val heading = d.variant.heading
-        // Поперёк направления полёта: для левых и правых — по вертикали, для летящего вверх — по горизонтали.
-        val px = -heading.dy
-        val py = heading.dx
+        // Поперёк направления полёта: для левых и правых — вниз по экрану, для летящего вверх — вправо.
+        // Ось всегда смотрит в положительную сторону, чтобы полоса [BAND, 1 − BAND] считалась от края экрана.
+        val px = if (heading == Heading.UP) 1f else 0f
+        val py = if (heading == Heading.UP) 0f else 1f
         val across = d.x * px + d.y * py
         val extent = if (heading == Heading.UP) width else height
 
