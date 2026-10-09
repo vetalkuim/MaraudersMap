@@ -2,4 +2,4 @@
 <wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/wallpaper_description"
     android:settingsActivity="com.vetalkuim.maraudersmap.SettingsActivity"
-    android:thumbnail="@drawable/bg_poster" />
+    android:thumbnail="@drawable/bg_plain" />

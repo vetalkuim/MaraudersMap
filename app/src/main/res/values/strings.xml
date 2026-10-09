@@ -3,12 +3,6 @@
     <string name="app_name">Карта мародёров</string>
     <string name="wallpaper_name">Карта мародёров</string>
     <string name="wallpaper_description">Живые обои: Карта мародёров на старом пергаменте</string>
-    <string name="background_title">Фон</string>
-    <string name="bg_plain">Ровный пергамент</string>
-    <string name="bg_poster">Растровая версия</string>
-    <string name="map_title">Карта</string>
-    <string name="map_none">Без карты</string>
-    <string name="map_hogwarts">Вариант 1</string>
     <string name="creatures_title">Обитатели карты</string>
     <string name="map_intensity">Интенсивность цвета карты: %1$d%%</string>
     <string name="travelers_title">Путники</string>

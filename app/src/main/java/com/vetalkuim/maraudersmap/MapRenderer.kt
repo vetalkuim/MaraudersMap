@@ -21,7 +21,8 @@ import android.os.Build
  */
 class MapRenderer(private val context: Context) {
 
-    private val bitmaps = mutableMapOf<MapBackground, Bitmap>()
+    /** Слой 0 — ровный пергамент; загружается при первой отрисовке. */
+    private var parchment: Bitmap? = null
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val srcRect = Rect()
     private val dstRect = Rect()
@@ -67,12 +68,6 @@ class MapRenderer(private val context: Context) {
     var creatures: MapCreatures? = null
 
     private val creatureRenderer by lazy { CreatureRenderer(context) }
-
-    var background: MapBackground = MapBackground.DEFAULT
-        set(value) {
-            field = value
-            releaseUnused()
-        }
 
     fun draw(canvas: Canvas) {
         canvas.drawColor(Color.BLACK)
@@ -150,33 +145,17 @@ class MapRenderer(private val context: Context) {
     }
 
     private fun drawBackground(canvas: Canvas) {
-        val bitmap = bitmapFor(background)
+        val bitmap = parchment ?: BitmapFactory.decodeResource(
+            context.resources, R.drawable.bg_plain, BitmapFactory.Options().apply { inScaled = false },
+        ).also { parchment = it }
         centerCrop(bitmap.width, bitmap.height, canvas.width, canvas.height, srcRect)
         dstRect.set(0, 0, canvas.width, canvas.height)
         canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
     }
 
-    private fun bitmapFor(bg: MapBackground): Bitmap = bitmaps.getOrPut(bg) {
-        BitmapFactory.decodeResource(context.resources, bg.drawable, BitmapFactory.Options().apply {
-            inScaled = false
-        })
-    }
-
-    private fun releaseUnused() {
-        val needed = setOf(background)
-        val iterator = bitmaps.entries.iterator()
-        while (iterator.hasNext()) {
-            val entry = iterator.next()
-            if (entry.key !in needed) {
-                entry.value.recycle()
-                iterator.remove()
-            }
-        }
-    }
-
     fun release() {
-        bitmaps.values.forEach(Bitmap::recycle)
-        bitmaps.clear()
+        parchment?.recycle()
+        parchment = null
         mapImage = null
         mapRaster = null
         creatureRenderer.release()
