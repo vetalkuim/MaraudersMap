@@ -6,16 +6,12 @@ import org.json.JSONArray
 import org.json.JSONException
 
 /**
- * Фоновые варианты. [CUSTOM] — картинка пользователя ([CustomBackground]), [drawable] у неё —
- * запасной фон, пока картинка не выбрана.
+ * Фоновые варианты.
  * [includesMap] — картинка уже с нарисованной картой: она заменяет слои 0 и 1, отдельная карта не рисуется.
  */
 enum class MapBackground(val drawable: Int, val title: Int, val includesMap: Boolean = false) {
-    FOLD_WIDE(R.drawable.bg_fold_wide, R.string.bg_fold_wide),
-    FOLD_THIN(R.drawable.bg_fold_thin, R.string.bg_fold_thin),
     PLAIN(R.drawable.bg_plain, R.string.bg_plain),
-    POSTER(R.drawable.bg_poster, R.string.bg_poster, includesMap = true),
-    CUSTOM(R.drawable.bg_plain, R.string.bg_custom);
+    POSTER(R.drawable.bg_poster, R.string.bg_poster, includesMap = true);
 
     companion object {
         /** По умолчанию — ровный пергамент; сохранённый прежний режим раскрытия тоже становится им. */
@@ -27,8 +23,6 @@ object MapPrefs {
     private const val FILE = "map_prefs"
     const val KEY_BACKGROUND = "background"
     const val KEY_MAP_LAYER = "map_layer"
-    const val KEY_CUSTOM_NAME = "map_custom_name"
-    const val KEY_CUSTOM_STAMP = "map_custom_stamp"
     const val KEY_DEMENTORS = "dementor_count"
 
     /** JSON-массив имён путников, пустые строки тоже хранятся — это незаполненные строки в настройках. */
@@ -41,9 +35,6 @@ object MapPrefs {
     const val KEY_MAP_INTENSITY = "map_intensity"
     const val DEFAULT_MAP_INTENSITY = 100
     const val MAX_MAP_INTENSITY = 200
-
-    /** Меняется при каждой новой своей картинке, чтобы обои перечитали файл. */
-    const val KEY_CUSTOM_VERSION = "custom_version"
 
     fun get(context: Context): SharedPreferences =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -100,23 +91,5 @@ object MapPrefs {
 
     fun setMapIntensity(context: Context, percent: Int) {
         get(context).edit().putInt(KEY_MAP_INTENSITY, percent).apply()
-    }
-
-    fun customMapName(prefs: SharedPreferences): String? = prefs.getString(KEY_CUSTOM_NAME, null)
-
-    /** Новая метка времени заставляет обои перечитать файл, даже если имя совпадает с прежним. */
-    fun setCustomMap(context: Context, name: String) {
-        get(context).edit()
-            .putString(KEY_CUSTOM_NAME, name)
-            .putLong(KEY_CUSTOM_STAMP, System.currentTimeMillis())
-            .apply()
-    }
-
-    /** Делает фоном только что сохранённую свою картинку и просит обои перечитать её. */
-    fun setCustomBackground(context: Context) {
-        get(context).edit()
-            .putString(KEY_BACKGROUND, MapBackground.CUSTOM.name)
-            .putLong(KEY_CUSTOM_VERSION, System.currentTimeMillis())
-            .apply()
     }
 }

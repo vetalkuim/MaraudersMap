@@ -26,16 +26,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp" />
 
-        <Button
-            android:id="@+id/pick_image"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="@color/parchment"
-            android:text="@string/pick_image"
-            android:textColor="@color/ink"
-            android:visibility="gone" />
-
         <!-- Слой 1. Скрыт, если фон уже содержит карту (MapBackground.includesMap). -->
         <LinearLayout
             android:id="@+id/map_section"
@@ -58,24 +48,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp" />
-
-            <TextView
-                android:id="@+id/map_custom_name"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textColor="@color/parchment_dark"
-                android:textSize="14sp"
-                android:visibility="gone" />
-
-            <Button
-                android:id="@+id/pick_map"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:backgroundTint="@color/parchment_dark"
-                android:text="@string/map_pick"
-                android:textColor="@color/ink" />
 
             <TextView
                 android:id="@+id/map_intensity_label"
