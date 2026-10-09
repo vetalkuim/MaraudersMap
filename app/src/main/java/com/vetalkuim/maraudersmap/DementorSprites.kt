@@ -13,10 +13,10 @@ import kotlin.math.roundToInt
 class DementorSprites(private val context: Context) {
 
     /**
-     * Картинка без лица — на его месте глубина капюшона — и маска лица, серого овала в капюшоне,
-     * с его непрозрачным цветом [faceColor]. Лицо рисуется отдельно, чтобы оно могло отворачиваться.
+     * Картинка без лица — на его месте глубина капюшона — и маска лица, серого овала в капюшоне.
+     * Лицо рисуется отдельно, цветом пергамента, чтобы оно могло отворачиваться.
      */
-    class Sprite(val bitmap: Bitmap, val face: Bitmap, val faceLeft: Int, val faceTop: Int, val faceColor: Int)
+    class Sprite(val bitmap: Bitmap, val face: Bitmap, val faceLeft: Int, val faceTop: Int)
 
     private val cache = HashMap<DementorVariant, Sprite>()
 
@@ -59,8 +59,7 @@ class DementorSprites(private val context: Context) {
 
     /**
      * Лицо на рисунке — тёмно-серое (около 38 из 255) пятно внутри чёрного капюшона.
-     * Маска берёт его пиксели в чуть расширенном овале лица, с мягким краем; цвет лица — их средний цвет,
-     * осветлённый на [FACE_LIGHTEN].
+     * Маска берёт его пиксели в чуть расширенном овале лица, с мягким краем.
      * На самой картинке лицо закрашивается цветом капюшона вокруг него.
      */
     private fun faceMask(variant: DementorVariant, bitmap: Bitmap): Sprite {
@@ -77,10 +76,6 @@ class DementorSprites(private val context: Context) {
         val pixels = IntArray(mw * mh)
         bitmap.getPixels(pixels, 0, mw, left, top, mw, mh)
         val weights = FloatArray(pixels.size)
-        var faceR = 0f
-        var faceG = 0f
-        var faceB = 0f
-        var faceSum = 0f
         var hoodR = 0f
         var hoodG = 0f
         var hoodB = 0f
@@ -96,24 +91,13 @@ class DementorSprites(private val context: Context) {
                 else -> 1f
             }
             weights[i] = weight
-            if (weight > 0f) {
-                faceR += Color.red(p) * weight
-                faceG += Color.green(p) * weight
-                faceB += Color.blue(p) * weight
-                faceSum += weight
-            } else if (alpha >= 250 && gray < FACE_GRAY_MIN) {
+            if (weight <= 0f && alpha >= 250 && gray < FACE_GRAY_MIN) {
                 hoodR += Color.red(p)
                 hoodG += Color.green(p)
                 hoodB += Color.blue(p)
                 hoodCount++
             }
         }
-        val drawn = if (faceSum > 0f) {
-            Color.rgb((faceR / faceSum).roundToInt(), (faceG / faceSum).roundToInt(), (faceB / faceSum).roundToInt())
-        } else {
-            DEFAULT_FACE
-        }
-        val faceColor = lighten(drawn, FACE_LIGHTEN)
         val hood = if (hoodCount > 0) {
             Color.rgb((hoodR / hoodCount).roundToInt(), (hoodG / hoodCount).roundToInt(), (hoodB / hoodCount).roundToInt())
         } else {
@@ -135,7 +119,7 @@ class DementorSprites(private val context: Context) {
         sprite.setPixels(faceless, 0, mw, left, top, mw, mh)
         val face = Bitmap.createBitmap(mw, mh, Bitmap.Config.ALPHA_8)
         face.setPixels(pixels, 0, mw, 0, 0, mw, mh)
-        return Sprite(sprite, face, left, top, faceColor)
+        return Sprite(sprite, face, left, top)
     }
 
     private companion object {
@@ -143,18 +127,6 @@ class DementorSprites(private val context: Context) {
         const val FACE_GRAY_MIN = 28
         const val FACE_GRAY_MAX = 60
         const val FACE_SOFT = 14f
-
-        /** Цвет лица, если на рисунке его не нашлось. */
-        val DEFAULT_FACE = Color.rgb(38, 38, 38)
-
-        /** Лицо светлее, чем на рисунке: смешано с белым на эту долю (тёмно-серое 35 → серое ~123). */
-        const val FACE_LIGHTEN = 0.4f
-
-        fun lighten(color: Int, amount: Float): Int = Color.rgb(
-            (Color.red(color) + (255 - Color.red(color)) * amount).roundToInt(),
-            (Color.green(color) + (255 - Color.green(color)) * amount).roundToInt(),
-            (Color.blue(color) + (255 - Color.blue(color)) * amount).roundToInt(),
-        )
 
         fun drawableFor(variant: DementorVariant): Int = when (variant.number) {
             1 -> R.drawable.dementor_1
