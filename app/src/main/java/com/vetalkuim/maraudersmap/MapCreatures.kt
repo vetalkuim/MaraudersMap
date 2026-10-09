@@ -802,11 +802,11 @@ class MapCreatures(
 
         /** Сколько путников можно завести в настройках. */
         const val MAX_TRAVELERS = 10
-        const val DEFAULT_TRAVELERS = 3
+        const val DEFAULT_TRAVELERS = 4
         const val DEFAULT_DEMENTORS = 1
 
-        /** Имена по умолчанию: первые [DEFAULT_TRAVELERS] — для новых настроек. */
-        val NAMES = listOf("Путник", "Странница", "Бродяга", "Скиталец", "Пилигрим")
+        /** Имена по умолчанию — Мародёры; первые [DEFAULT_TRAVELERS] — для новых настроек. */
+        val NAMES = listOf("Сохатый", "Бродяга", "Лунатик", "Хвост", "Путник")
 
         const val STEP_DP = 20f
 

@@ -5,8 +5,6 @@ import android.app.WallpaperManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -25,7 +23,6 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -39,17 +36,13 @@ class SettingsActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    /** Разбор SVG, импорт файлов и отрисовка превью — вне главного потока, строго по очереди. */
+    /** Импорт файлов и подготовка карты — вне главного потока, строго по очереди. */
     private val worker: ExecutorService = Executors.newSingleThreadExecutor()
 
-    // Состояние превью, доступное только из [worker].
-    private lateinit var previewRenderer: MapRenderer
-    private var previewLayer: MapLayer? = null
-    private var previewMapStamp = -1L
-    private var previewCustomVersion = -1L
+    /** Карта, для которой кэш уже готовится; меняется только в главном потоке. */
+    private var warmedLayer: MapLayer? = null
+    private var warmedStamp = -1L
 
-    private var previewGeneration = 0
-    private lateinit var preview: ImageView
     private lateinit var backgroundGroup: RadioGroup
     private lateinit var pickImageButton: Button
     private lateinit var mapGroup: RadioGroup
@@ -63,7 +56,6 @@ class SettingsActivity : Activity() {
 
     /** Имена путников в порядке строк [travelerList], включая пустые. */
     private val travelerNames = mutableListOf<String>()
-    private val previewRunnable = Runnable { updatePreview() }
 
     /** Подавляет обработчики, когда отметка переключается программно. */
     private var ignoreChecks = false
@@ -71,9 +63,7 @@ class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
-        previewRenderer = MapRenderer(applicationContext)
 
-        preview = findViewById(R.id.preview)
         backgroundGroup = findViewById(R.id.background_group)
         pickImageButton = findViewById(R.id.pick_image)
         mapGroup = findViewById(R.id.map_group)
@@ -131,7 +121,7 @@ class SettingsActivity : Activity() {
 
             override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
 
-            /** Сохраняется, когда палец отпущен, — превью не пересобирается на каждом делении. */
+            /** Сохраняется, когда палец отпущен, — обои не перестраиваются на каждом делении. */
             override fun onStopTrackingTouch(seekBar: SeekBar) {
                 if (seekBar == mapIntensity) {
                     MapPrefs.setMapIntensity(this@SettingsActivity, seekBar.progress)
@@ -150,8 +140,6 @@ class SettingsActivity : Activity() {
     }
 
     override fun onDestroy() {
-        mainHandler.removeCallbacks(previewRunnable)
-        worker.execute { previewRenderer.release() }
         worker.shutdown()
         super.onDestroy()
     }
@@ -179,7 +167,7 @@ class SettingsActivity : Activity() {
         }
     }
 
-    /** Отмечает сохранённые в настройках фон и карту и обновляет превью. */
+    /** Отмечает сохранённые в настройках фон и карту. */
     private fun showSaved() {
         val prefs = MapPrefs.get(this)
         val background = MapPrefs.background(prefs)
@@ -199,7 +187,7 @@ class SettingsActivity : Activity() {
         val name = MapPrefs.customMapName(prefs)
         customMapName.visibility = if (name == null) View.GONE else View.VISIBLE
         if (name != null) customMapName.text = getString(R.string.map_custom_file, name)
-        updatePreview()
+        warmMapCache(layer, prefs.getLong(MapPrefs.KEY_CUSTOM_STAMP, 0L))
     }
 
     private fun showSliders(intensity: Int, dementors: Int) {
@@ -251,12 +239,10 @@ class SettingsActivity : Activity() {
         return field
     }
 
-    /** Обои переименовывают путников сразу, а превью пересобирается, когда ввод затихнет. */
+    /** Обои переименовывают путников сразу. */
     private fun saveTravelers() {
         MapPrefs.setTravelerNames(this, travelerNames)
         updateAddTraveler()
-        mainHandler.removeCallbacks(previewRunnable)
-        mainHandler.postDelayed(previewRunnable, PREVIEW_DEBOUNCE_MS)
     }
 
     private fun updateAddTraveler() {
@@ -333,79 +319,27 @@ class SettingsActivity : Activity() {
         }
     }
 
-    /** Превью собирается тем же [MapRenderer], что и обои, — фон и карта вместе. */
-    private fun updatePreview() {
-        val prefs = MapPrefs.get(this)
-        val background = MapPrefs.background(prefs)
-        val layer = MapPrefs.mapLayer(prefs)
-        val mapStamp = prefs.getLong(MapPrefs.KEY_CUSTOM_STAMP, 0L)
-        val customVersion = prefs.getLong(MapPrefs.KEY_CUSTOM_VERSION, 0L)
-        val travelers = MapPrefs.travelerNames(prefs)
-        val dementors = MapPrefs.dementorCount(prefs)
-        val intensity = MapPrefs.mapIntensity(prefs)
-        val metrics = resources.displayMetrics
-        val width = minOf(metrics.widthPixels, metrics.heightPixels) / PREVIEW_DOWNSCALE
-        val height = maxOf(metrics.widthPixels, metrics.heightPixels) / PREVIEW_DOWNSCALE
-        val generation = ++previewGeneration
-
-        worker.execute {
-            val newMap = layer != previewLayer || mapStamp != previewMapStamp
-            if (newMap) {
-                previewRenderer.mapImage = try {
-                    MapLayers.image(this, layer, mapStamp)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Cannot load map layer $layer", e)
-                    null
-                } catch (e: OutOfMemoryError) {
-                    Log.w(TAG, "Map layer $layer is too large", e)
-                    null
-                }
-                previewLayer = layer
-                previewMapStamp = mapStamp
-            }
-            if (customVersion != previewCustomVersion) {
-                previewRenderer.invalidateCustom()
-                previewCustomVersion = customVersion
-            }
-            previewRenderer.background = background
-            previewRenderer.mapIntensity = intensity
-            // Превью в PREVIEW_DOWNSCALE раз меньше экрана — путники уменьшены так же.
-            previewRenderer.creatures = MapCreatures(metrics.density / PREVIEW_DOWNSCALE).apply {
-                travelerNames = travelers
-                dementorCount = dementors
-                resize(width.toFloat(), height.toFloat())
-            }
-            // Сначала — где можно ходить, потом — первые шаги, чтобы следы сразу шли по чистой бумаге.
-            previewRenderer.updateWalkArea(width, height)
-            previewRenderer.creatures?.warmUp()
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            // Время старта анимации не задано, поэтому рисуется её последний кадр.
-            previewRenderer.draw(Canvas(bitmap))
-            mainHandler.post {
-                if (generation == previewGeneration && !isDestroyed) preview.setImageBitmap(bitmap)
-            }
-            // После превью, чтобы не задерживать его.
-            if (newMap) warmMapCache(layer, mapStamp)
-        }
-    }
-
     /**
      * Заранее готовит карту под полный экран в кэше на диске, чтобы обои показали её
-     * с первого кадра, а не после разбора SVG. Вызывается в фоновом потоке.
+     * с первого кадра, а не после разбора SVG. Готовит в фоне, один раз на каждую выбранную карту.
      */
     private fun warmMapCache(layer: MapLayer, stamp: Long) {
-        if (layer == MapLayer.NONE) return
+        if (layer == MapLayer.NONE || (layer == warmedLayer && stamp == warmedStamp)) return
+        warmedLayer = layer
+        warmedStamp = stamp
         val real = DisplayMetrics()
         @Suppress("DEPRECATION")
         windowManager.defaultDisplay.getRealMetrics(real)
         val width = minOf(real.widthPixels, real.heightPixels)
         val height = maxOf(real.widthPixels, real.heightPixels)
-        try {
-            MapLayers.raster(this, layer, stamp, width, height)
-        } catch (e: Exception) {
-            Log.w(TAG, "Cannot prepare map layer $layer", e)
-        } catch (e: OutOfMemoryError) {
-            Log.w(TAG, "Map layer $layer is too large", e)
+        worker.execute {
+            try {
+                MapLayers.raster(this, layer, stamp, width, height)
+            } catch (e: Exception) {
+                Log.w(TAG, "Cannot prepare map layer $layer", e)
+            } catch (e: OutOfMemoryError) {
+                Log.w(TAG, "Map layer $layer is too large", e)
+            }
         }
     }
 
@@ -428,8 +362,6 @@ class SettingsActivity : Activity() {
     private companion object {
         const val REQUEST_PICK_IMAGE = 1
         const val REQUEST_MAP_FILE = 2
-        const val PREVIEW_DOWNSCALE = 3
-        const val PREVIEW_DEBOUNCE_MS = 500L
         const val TAG = "MapSettings"
     }
 }

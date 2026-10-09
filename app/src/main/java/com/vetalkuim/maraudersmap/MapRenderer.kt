@@ -12,7 +12,6 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
-import android.os.SystemClock
 
 /**
  * Рисует обои по слоям:
@@ -75,22 +74,6 @@ class MapRenderer(private val context: Context) {
             releaseUnused()
         }
 
-    private var unfoldStart = 0L
-
-    /** Запускает анимацию раскрытия заново (для режима [MapBackground.UNFOLD]). */
-    fun restartUnfold() {
-        unfoldStart = SystemClock.uptimeMillis()
-    }
-
-    /** true, пока идёт анимация и нужны следующие кадры. */
-    val isAnimating: Boolean
-        get() = background == MapBackground.UNFOLD &&
-            SystemClock.uptimeMillis() - unfoldStart < UNFOLD_TOTAL_MS + MAP_REVEAL_MS
-
-    /** true, пока лист разворачивается: путники в это время стоят. */
-    val isUnfolding: Boolean
-        get() = background == MapBackground.UNFOLD && SystemClock.uptimeMillis() - unfoldStart < UNFOLD_TOTAL_MS
-
     fun draw(canvas: Canvas) {
         canvas.drawColor(Color.BLACK)
         drawBackground(canvas)
@@ -135,19 +118,8 @@ class MapRenderer(private val context: Context) {
         return WalkArea.fromInk(width.toFloat(), height.toFloat(), cell, dp, ink)
     }
 
-
-    /** Непрозрачность слоёв поверх пергамента: в режиме раскрытия они проступают после разворота листа. */
-    private fun revealAlpha(): Int {
-        if (background != MapBackground.UNFOLD) return 255
-        val elapsed = SystemClock.uptimeMillis() - unfoldStart - UNFOLD_TOTAL_MS
-        return (easeInOut((elapsed.toFloat() / MAP_REVEAL_MS).coerceIn(0f, 1f)) * 255).toInt()
-    }
-
-    /** В режиме раскрытия карта проступает чернилами, когда лист уже развёрнут. */
     private fun drawMap(canvas: Canvas) {
-        val alpha = revealAlpha()
-        if (alpha <= 0) return
-        val strength = alpha * mapIntensity / 100
+        val strength = 255 * mapIntensity / 100
         if (strength <= 0) return
         val bitmap = mapBitmap(canvas.width, canvas.height) ?: return
         mapPaint.alpha = strength.coerceAtMost(255)
@@ -160,15 +132,7 @@ class MapRenderer(private val context: Context) {
 
     private fun drawCreatures(canvas: Canvas) {
         val world = creatures ?: return
-        val alpha = revealAlpha()
-        if (alpha <= 0) return
-        if (alpha >= 255) {
-            creatureRenderer.draw(canvas, world)
-            return
-        }
-        val save = canvas.saveLayerAlpha(null, alpha)
         creatureRenderer.draw(canvas, world)
-        canvas.restoreToCount(save)
     }
 
     /**
@@ -186,28 +150,9 @@ class MapRenderer(private val context: Context) {
     }
 
     private fun drawBackground(canvas: Canvas) {
-        if (background != MapBackground.UNFOLD) {
-            drawLayer(canvas, background, 255)
-            return
-        }
-        val frames = MapBackground.unfoldFrames
-        val elapsed = SystemClock.uptimeMillis() - unfoldStart
-        val progress = ((elapsed - UNFOLD_HOLD_MS).toFloat() / UNFOLD_STEP_MS)
-            .coerceIn(0f, (frames.size - 1).toFloat())
-        val index = progress.toInt().coerceAtMost(frames.size - 2)
-        val fraction = easeInOut(progress - index)
-
-        drawLayer(canvas, frames[index], 255)
-        if (fraction > 0f) {
-            drawLayer(canvas, frames[index + 1], (fraction * 255).toInt())
-        }
-    }
-
-    private fun drawLayer(canvas: Canvas, bg: MapBackground, alpha: Int) {
-        val bitmap = bitmapFor(bg)
+        val bitmap = bitmapFor(background)
         centerCrop(bitmap.width, bitmap.height, canvas.width, canvas.height, srcRect)
         dstRect.set(0, 0, canvas.width, canvas.height)
-        paint.alpha = alpha
         canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
     }
 
@@ -224,11 +169,7 @@ class MapRenderer(private val context: Context) {
     }
 
     private fun releaseUnused() {
-        val needed = if (background == MapBackground.UNFOLD) {
-            MapBackground.unfoldFrames.toSet()
-        } else {
-            setOf(background)
-        }
+        val needed = setOf(background)
         val iterator = bitmaps.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
@@ -265,10 +206,6 @@ class MapRenderer(private val context: Context) {
             return bitmap
         }
 
-        private const val UNFOLD_HOLD_MS = 250L
-        private const val UNFOLD_STEP_MS = 650L
-        private val UNFOLD_TOTAL_MS = UNFOLD_HOLD_MS + UNFOLD_STEP_MS * (MapBackground.unfoldFrames.size - 1)
-        private const val MAP_REVEAL_MS = 900L
 
         /** Поля вокруг карты — доля меньшей стороны экрана. */
         private const val MAP_MARGIN = 0.04f
@@ -298,8 +235,6 @@ class MapRenderer(private val context: Context) {
                     floatArrayOf(0f, 0f, 0f, 1f, 0f),
             )
         }
-
-        private fun easeInOut(t: Float): Float = t * t * (3f - 2f * t)
 
         /** Вычисляет область исходника, которая заполнит экран без искажений. */
         private fun centerCrop(srcW: Int, srcH: Int, dstW: Int, dstH: Int, out: Rect) {
