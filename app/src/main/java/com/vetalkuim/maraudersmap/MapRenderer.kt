@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.graphics.BlendMode
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
@@ -25,9 +27,13 @@ class MapRenderer(private val context: Context) {
     private val srcRect = Rect()
     private val dstRect = Rect()
 
-    /** Чернила впитываются в пергамент: белый фон PNG-рисунка не перекрывает бумагу (API 29+). */
+    /**
+     * Чернила впитываются в пергамент: белый фон PNG-рисунка не перекрывает бумагу (API 29+).
+     * Карта рисуется той же сепией, что и следы путников.
+     */
     private val mapPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) blendMode = BlendMode.MULTIPLY
+        colorFilter = ColorMatrixColorFilter(inkTint(INK))
     }
     private var mapCache: Bitmap? = null
 
@@ -293,6 +299,21 @@ class MapRenderer(private val context: Context) {
             if (alpha < INK_THRESHOLD) return false
             val luma = (Color.red(pixel) * 299 + Color.green(pixel) * 587 + Color.blue(pixel) * 114) / 1000
             return (255 - luma) * alpha / 255 >= INK_THRESHOLD
+        }
+
+        /**
+         * Перекрашивает рисунок в [ink] по яркости: чёрное становится [ink], белое остаётся белым,
+         * промежуточное — между ними; прозрачность не меняется.
+         */
+        private fun inkTint(ink: Int): ColorMatrix {
+            fun row(channel: Int): FloatArray {
+                val k = (255 - channel) / 255f
+                return floatArrayOf(k * 0.299f, k * 0.587f, k * 0.114f, 0f, channel.toFloat())
+            }
+            return ColorMatrix(
+                row(Color.red(ink)) + row(Color.green(ink)) + row(Color.blue(ink)) +
+                    floatArrayOf(0f, 0f, 0f, 1f, 0f),
+            )
         }
 
         private fun easeInOut(t: Float): Float = t * t * (3f - 2f * t)

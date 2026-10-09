@@ -11,6 +11,9 @@ import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sin
 
+/** Сепия, общая для всех путников и их следов; тем же цветом рисуется карта (слой 1). */
+const val INK = 0xFF3B2614.toInt()
+
 /** Рисует слой 2 — путников с их следами и подписями и дементоров над ними — поверх карты. */
 class CreatureRenderer(context: Context) {
 
@@ -157,8 +160,6 @@ class CreatureRenderer(context: Context) {
             (Color.blue(color) * FACE_SHADE).toInt(),
         )
 
-        /** Сепия, общая для всех путников. */
-        const val INK = 0xFF3B2614.toInt()
         const val LABEL_SIZE_DP = 20f
 
         /** Длина следа на экране и длина ступни в единицах SVG (от носка до пятки). */
