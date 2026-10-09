@@ -15,13 +15,17 @@ import kotlin.math.sin
 /** Сепия, общая для всех путников и их следов; тем же цветом рисуется карта (слой 1). */
 const val INK = 0xFF3B2614.toInt()
 
+/** Цвет ровного пергамента ([MapBackground.PLAIN]) — им рисуется лицо дементора. */
+const val PARCHMENT = 0xFFE9C795.toInt()
+
 /** Рисует слой 2 — путников с их следами и подписями и дементоров над ними — поверх карты. */
 class CreatureRenderer(context: Context) {
 
     private val sprites = DementorSprites(context)
     /** Дементоры непрозрачные: сквозь балахон карта не просвечивает. */
     private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
-    private val facePaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+    /** Лицо дементора — непрозрачное, цвета пергамента. */
+    private val facePaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply { color = PARCHMENT }
 
     /** Оставляет от силуэта лица только то, что внутри овала лица в капюшоне. */
     private val faceClipPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply {
@@ -106,7 +110,6 @@ class CreatureRenderer(context: Context) {
     private fun drawFace(canvas: Canvas, sprite: DementorSprites.Sprite, d: Dementor) {
         val shown = easeInOut(d.face.coerceIn(0f, 1f))
         if (shown <= 0f) return
-        facePaint.color = sprite.faceColor
         if (shown >= 1f) {
             canvas.drawBitmap(sprite.face, null, faceRect, facePaint)
             return
