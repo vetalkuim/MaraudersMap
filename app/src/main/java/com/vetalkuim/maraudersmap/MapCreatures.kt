@@ -76,6 +76,10 @@ class Dementor(val variant: DementorVariant, var x: Float, var y: Float, val see
     var modeUntil = 0f
     var nextApproachAt = 0f
 
+    /** Просто так, в полёте, дементор ненадолго опускается к карте и отворачивает лицо. */
+    var nextGlanceAt = Float.NaN
+    var glanceUntil = 0f
+
     /** Путник, к которому дементор подлетает или возле которого держится. */
     var prey: Traveler? = null
 
@@ -84,6 +88,18 @@ class Dementor(val variant: DementorVariant, var x: Float, var y: Float, val see
 
     /** 0 — голова поворачивается сама по себе, 1 — смотрит на путника. */
     var gazeWeight = 0f
+
+    /**
+     * Лицо под капюшоном: 1 — смотрит на зрителя, 0 — отвернулось к карте и скрылось за краем капюшона.
+     * Опускаясь (уменьшаясь), дементор отворачивается; поднимаясь (увеличиваясь) — поворачивается к зрителю.
+     */
+    var face = 1f
+
+    /** Куда лицо поворачивается: 1 — к зрителю, 0 — к карте. Меняется, только пока меняется масштаб. */
+    var faceTarget = 1f
+
+    /** Куда перетекает силуэт лица: −1 — влево, 1 — вправо. */
+    var faceSide = 1f
 
     enum class Mode {
         /** Плывёт по ветру. */
@@ -686,7 +702,7 @@ class MapCreatures(
             (0.6f * sin(time * 0.35f + d.seed) + 0.4f * sin(time * 0.83f + d.seed * 2.3f))
         var scale = 1f
         when (d.mode) {
-            Dementor.Mode.CRUISE -> Unit
+            Dementor.Mode.CRUISE -> scale = glanceScale(d)
             Dementor.Mode.APPROACH -> if (prey != null) {
                 forward = APPROACH_DP * dp
                 val preyAcross = prey.x * px + prey.y * py
@@ -729,8 +745,41 @@ class MapCreatures(
         }
         d.x += d.vx * dt
         d.y += d.vy * dt
+        turnFace(d, scale, dt)
         d.scale += (scale - d.scale) * (1f - exp(-dt / SCALE_LAG_S))
         lookAtPrey(d, dt)
+    }
+
+    /**
+     * Время от времени (раз в [GLANCE_MIN_S]–[GLANCE_MAX_S] с) дементор в полёте ненадолго
+     * опускается к карте — и, как у путника, отворачивает лицо, а поднимаясь, поворачивает его обратно.
+     */
+    private fun glanceScale(d: Dementor): Float {
+        if (d.nextGlanceAt.isNaN()) d.nextGlanceAt = time + random.range(GLANCE_MIN_S, GLANCE_MAX_S)
+        if (time >= d.nextGlanceAt) {
+            d.glanceUntil = time + random.range(GLANCE_HOLD_MIN_S, GLANCE_HOLD_MAX_S)
+            d.nextGlanceAt = d.glanceUntil + random.range(GLANCE_MIN_S, GLANCE_MAX_S)
+        }
+        return if (time < d.glanceUntil) GLANCE_SCALE else 1f
+    }
+
+    /**
+     * Уменьшаясь — опускаясь к карте, — дементор отворачивает лицо к ней; увеличиваясь — поворачивает
+     * лицо к зрителю. Силуэт лица медленно перетекает в случайную сторону, влево или вправо.
+     */
+    private fun turnFace(d: Dementor, targetScale: Float, dt: Float) {
+        val target = when {
+            targetScale < d.scale - SCALE_EPS -> 0f
+            targetScale > d.scale + SCALE_EPS -> 1f
+            else -> d.faceTarget
+        }
+        if (target != d.faceTarget) {
+            // Лицо в покое выбирает, в какую сторону перетекать; на полпути — возвращается той же стороной.
+            if (d.face == 0f || d.face == 1f) d.faceSide = if (random.nextBoolean()) 1f else -1f
+            d.faceTarget = target
+        }
+        val step = dt / FACE_TURN_S
+        d.face = if (d.faceTarget > d.face) min(d.faceTarget, d.face + step) else max(d.faceTarget, d.face - step)
     }
 
     /**
@@ -809,6 +858,19 @@ class MapCreatures(
         private const val RETURN_RATE = 0.4f
         private const val DEMENTOR_INERTIA_S = 0.8f
         private const val SCALE_LAG_S = 0.6f
+
+        /** Масштаб меняется, если до цели больше этого. */
+        private const val SCALE_EPS = 0.005f
+
+        /** За сколько секунд силуэт лица целиком перетекает за край капюшона или обратно. */
+        const val FACE_TURN_S = 2.5f
+
+        /** Опускаясь просто так, дементор уменьшается до этого масштаба. */
+        const val GLANCE_SCALE = 0.9f
+        private const val GLANCE_MIN_S = 8f
+        private const val GLANCE_MAX_S = 20f
+        private const val GLANCE_HOLD_MIN_S = 3f
+        private const val GLANCE_HOLD_MAX_S = 6f
 
         private const val APPROACH_DP = 13f
         private const val APPROACH_GAIN = 0.6f

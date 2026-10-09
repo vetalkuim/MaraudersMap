@@ -161,6 +161,67 @@ class DementorTest {
     }
 
     @Test
+    fun `опускаясь, дементор отворачивает лицо к карте, поднимаясь — поворачивает к зрителю`() {
+        val world = world(MapCreatures.MAX_COUNT, travelers = MapCreatures.MAX_COUNT)
+        val step = FRAME / MapCreatures.FACE_TURN_S + 1e-4f
+        val lastFace = HashMap<Dementor, Float>()
+        var hidden = 0
+        var returned = 0
+        val sides = HashSet<Float>()
+        world.run(600f) {
+            for (d in dementors) {
+                assertTrue(d.face in 0f..1f)
+                // Лицо перетекает медленно, без скачков.
+                lastFace[d]?.let { assertTrue(kotlin.math.abs(d.face - it) <= step) }
+                if (d.face == 0f) {
+                    hidden++
+                    sides += d.faceSide
+                }
+                if (d.face == 1f && lastFace[d]?.let { it < 1f } == true) returned++
+                lastFace[d] = d.face
+            }
+        }
+        assertTrue(hidden > 0)
+        assertTrue(returned > 0)
+        assertEquals(setOf(-1f, 1f), sides)
+    }
+
+    @Test
+    fun `и без путников дементор время от времени отворачивает лицо и поворачивает обратно`() {
+        val world = world(1, travelers = 0)
+        var dipped = false
+        var hidden = false
+        var back = false
+        world.run(120f) {
+            val d = dementors.single()
+            if (d.scale < 0.95f) dipped = true
+            if (d.face == 0f) hidden = true
+            if (hidden && d.face == 1f) back = true
+        }
+        assertTrue(dipped)
+        assertTrue(hidden)
+        assertTrue(back)
+    }
+
+    @Test
+    fun `лицо уходит, пока дементор уменьшается, и возвращается, пока увеличивается`() {
+        val world = world(MapCreatures.MAX_COUNT, travelers = MapCreatures.MAX_COUNT)
+        val lastScale = HashMap<Dementor, Float>()
+        val lastFace = HashMap<Dementor, Float>()
+        world.run(300f) {
+            for (d in dementors) {
+                val ds = lastScale[d]?.let { d.scale - it } ?: 0f
+                val df = lastFace[d]?.let { d.face - it } ?: 0f
+                // Заметно уменьшается — лицо не появляется; заметно растёт — лицо не уходит.
+                if (ds < -0.002f) assertTrue(df <= 0f)
+                if (ds > 0.002f) assertTrue(df >= 0f)
+                lastScale[d] = d.scale
+                lastFace[d] = d.face
+            }
+        }
+    }
+
+    @Test
     fun `после поворота экрана дементоры остаются на своих местах`() {
         val world = world(3)
         val before = world.dementors.map { Triple(it, it.x / screenW, it.y / screenH) }

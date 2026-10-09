@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.graphics.BlendMode
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
@@ -25,22 +27,36 @@ class MapRenderer(private val context: Context) {
     private val srcRect = Rect()
     private val dstRect = Rect()
 
-    /** Чернила впитываются в пергамент: белый фон PNG-рисунка не перекрывает бумагу (API 29+). */
+    /**
+     * Чернила впитываются в пергамент: белый фон PNG-рисунка не перекрывает бумагу (API 29+).
+     * Карта рисуется той же сепией, что и следы путников.
+     */
     private val mapPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) blendMode = BlendMode.MULTIPLY
+        colorFilter = ColorMatrixColorFilter(inkTint(INK))
     }
     private var mapCache: Bitmap? = null
 
     /** Картинка карты, по которой посчитана сетка путников: пересчёт — только при новой. */
     private var walkAreaSource: Bitmap? = null
 
-    /** Изображение слоя карты; null — слой выключен или ещё загружается. */
+    /**
+     * Изображение слоя карты; null — слой выключен или ещё загружается.
+     * Растеризуется при первой отрисовке — так делает превью в настройках.
+     */
     var mapImage: MapImage? = null
         set(value) {
             field = value
             mapCache?.recycle()
             mapCache = null
         }
+
+    /**
+     * Готовая карта под размер экрана ([MapLayers.raster]): обои получают её заранее, из кэша
+     * на диске или из фонового потока, чтобы не растеризовать сложный вектор во время кадра.
+     * Если задана — главнее [mapImage].
+     */
+    var mapRaster: Bitmap? = null
 
     /**
      * Интенсивность цвета карты в процентах: до 100 — чернила бледнее,
@@ -52,10 +68,6 @@ class MapRenderer(private val context: Context) {
     var creatures: MapCreatures? = null
 
     private val creatureRenderer by lazy { CreatureRenderer(context) }
-    private val sampleRect = Rect()
-    private var canvasWidth = 0
-    private var canvasHeight = 0
-    private val backgroundAt: (Float, Float) -> Int = ::backgroundColorAt
 
     var background: MapBackground = MapBackground.DEFAULT
         set(value) {
@@ -80,8 +92,6 @@ class MapRenderer(private val context: Context) {
         get() = background == MapBackground.UNFOLD && SystemClock.uptimeMillis() - unfoldStart < UNFOLD_TOTAL_MS
 
     fun draw(canvas: Canvas) {
-        canvasWidth = canvas.width
-        canvasHeight = canvas.height
         canvas.drawColor(Color.BLACK)
         drawBackground(canvas)
         drawMap(canvas)
@@ -95,13 +105,12 @@ class MapRenderer(private val context: Context) {
      */
     fun updateWalkArea(width: Int, height: Int) {
         val world = creatures ?: return
-        val image = mapImage
-        if (image == null || mapIntensity <= 0) {
+        if ((mapRaster == null && mapImage == null) || mapIntensity <= 0) {
             if (world.walkArea != null) world.walkArea = null
             walkAreaSource = null
             return
         }
-        val bitmap = mapBitmap(image, width, height) ?: return
+        val bitmap = mapBitmap(width, height) ?: return
         if (bitmap === walkAreaSource && world.walkArea != null) return
         world.walkArea = walkAreaOf(bitmap, world.dp)
         walkAreaSource = bitmap
@@ -136,12 +145,11 @@ class MapRenderer(private val context: Context) {
 
     /** В режиме раскрытия карта проступает чернилами, когда лист уже развёрнут. */
     private fun drawMap(canvas: Canvas) {
-        val image = mapImage ?: return
         val alpha = revealAlpha()
         if (alpha <= 0) return
         val strength = alpha * mapIntensity / 100
         if (strength <= 0) return
-        val bitmap = mapBitmap(image, canvas.width, canvas.height) ?: return
+        val bitmap = mapBitmap(canvas.width, canvas.height) ?: return
         mapPaint.alpha = strength.coerceAtMost(255)
         canvas.drawBitmap(bitmap, 0f, 0f, mapPaint)
         if (strength > 255) {
@@ -155,44 +163,26 @@ class MapRenderer(private val context: Context) {
         val alpha = revealAlpha()
         if (alpha <= 0) return
         if (alpha >= 255) {
-            creatureRenderer.draw(canvas, world, backgroundAt)
+            creatureRenderer.draw(canvas, world)
             return
         }
         val save = canvas.saveLayerAlpha(null, alpha)
-        creatureRenderer.draw(canvas, world, backgroundAt)
+        creatureRenderer.draw(canvas, world)
         canvas.restoreToCount(save)
     }
 
-    /** Цвет фона (без карты) в точке экрана; в режиме раскрытия — развёрнутого листа. */
-    private fun backgroundColorAt(x: Float, y: Float): Int {
-        if (canvasWidth <= 0 || canvasHeight <= 0) return Color.BLACK
-        val bg = if (background == MapBackground.UNFOLD) MapBackground.unfoldFrames.last() else background
-        val bitmap = bitmapFor(bg)
-        centerCrop(bitmap.width, bitmap.height, canvasWidth, canvasHeight, sampleRect)
-        val px = (sampleRect.left + x / canvasWidth * sampleRect.width()).toInt().coerceIn(0, bitmap.width - 1)
-        val py = (sampleRect.top + y / canvasHeight * sampleRect.height()).toInt().coerceIn(0, bitmap.height - 1)
-        return bitmap.getPixel(px, py)
-    }
-
     /**
-     * Карта растеризуется один раз под размер экрана: перерисовывать сложный вектор
-     * каждый кадр анимации слишком дорого.
+     * Карта под размер экрана: готовая [mapRaster] или растеризованная один раз из [mapImage] —
+     * перерисовывать сложный вектор каждый кадр анимации слишком дорого.
+     * Готовая карта другого размера (после поворота) не рисуется, пока не придёт новая.
      */
-    private fun mapBitmap(image: MapImage, width: Int, height: Int): Bitmap? {
+    private fun mapBitmap(width: Int, height: Int): Bitmap? {
+        mapRaster?.let { return if (it.width == width && it.height == height) it else null }
+        val image = mapImage ?: return null
         mapCache?.let { if (it.width == width && it.height == height) return it }
         mapCache?.recycle()
-        mapCache = null
-        if (width <= 0 || height <= 0 || image.width <= 0f || image.height <= 0f) return null
-        val margin = minOf(width, height) * MAP_MARGIN
-        val scale = minOf((width - 2 * margin) / image.width, (height - 2 * margin) / image.height)
-        val w = image.width * scale
-        val h = image.height * scale
-        val left = (width - w) / 2
-        val top = (height - h) / 2
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        image.draw(Canvas(bitmap), RectF(left, top, left + w, top + h))
-        mapCache = bitmap
-        return bitmap
+        mapCache = rasterize(image, width, height)
+        return mapCache
     }
 
     private fun drawBackground(canvas: Canvas) {
@@ -253,33 +243,66 @@ class MapRenderer(private val context: Context) {
         bitmaps.values.forEach(Bitmap::recycle)
         bitmaps.clear()
         mapImage = null
+        mapRaster = null
         creatureRenderer.release()
     }
 
-    private companion object {
-        const val UNFOLD_HOLD_MS = 250L
-        const val UNFOLD_STEP_MS = 650L
-        val UNFOLD_TOTAL_MS = UNFOLD_HOLD_MS + UNFOLD_STEP_MS * (MapBackground.unfoldFrames.size - 1)
-        const val MAP_REVEAL_MS = 900L
+    companion object {
+        /**
+         * Вписывает карту в экран целиком с полями [MAP_MARGIN].
+         * Долго для больших SVG — обои вызывают это не в главном потоке.
+         */
+        fun rasterize(image: MapImage, width: Int, height: Int): Bitmap? {
+            if (width <= 0 || height <= 0 || image.width <= 0f || image.height <= 0f) return null
+            val margin = minOf(width, height) * MAP_MARGIN
+            val scale = minOf((width - 2 * margin) / image.width, (height - 2 * margin) / image.height)
+            val w = image.width * scale
+            val h = image.height * scale
+            val left = (width - w) / 2
+            val top = (height - h) / 2
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            image.draw(Canvas(bitmap), RectF(left, top, left + w, top + h))
+            return bitmap
+        }
+
+        private const val UNFOLD_HOLD_MS = 250L
+        private const val UNFOLD_STEP_MS = 650L
+        private val UNFOLD_TOTAL_MS = UNFOLD_HOLD_MS + UNFOLD_STEP_MS * (MapBackground.unfoldFrames.size - 1)
+        private const val MAP_REVEAL_MS = 900L
 
         /** Поля вокруг карты — доля меньшей стороны экрана. */
-        const val MAP_MARGIN = 0.04f
+        private const val MAP_MARGIN = 0.04f
 
         /** Порог «чернил»: насколько точка темнее бумаги с учётом прозрачности, из 255. */
-        const val INK_THRESHOLD = 64
+        private const val INK_THRESHOLD = 64
 
         /** Тёмная непрозрачная точка; белый фон PNG-рисунка чернилами не считается. */
-        fun isInk(pixel: Int): Boolean {
+        private fun isInk(pixel: Int): Boolean {
             val alpha = pixel ushr 24
             if (alpha < INK_THRESHOLD) return false
             val luma = (Color.red(pixel) * 299 + Color.green(pixel) * 587 + Color.blue(pixel) * 114) / 1000
             return (255 - luma) * alpha / 255 >= INK_THRESHOLD
         }
 
-        fun easeInOut(t: Float): Float = t * t * (3f - 2f * t)
+        /**
+         * Перекрашивает рисунок в [ink] по яркости: чёрное становится [ink], белое остаётся белым,
+         * промежуточное — между ними; прозрачность не меняется.
+         */
+        private fun inkTint(ink: Int): ColorMatrix {
+            fun row(channel: Int): FloatArray {
+                val k = (255 - channel) / 255f
+                return floatArrayOf(k * 0.299f, k * 0.587f, k * 0.114f, 0f, channel.toFloat())
+            }
+            return ColorMatrix(
+                row(Color.red(ink)) + row(Color.green(ink)) + row(Color.blue(ink)) +
+                    floatArrayOf(0f, 0f, 0f, 1f, 0f),
+            )
+        }
+
+        private fun easeInOut(t: Float): Float = t * t * (3f - 2f * t)
 
         /** Вычисляет область исходника, которая заполнит экран без искажений. */
-        fun centerCrop(srcW: Int, srcH: Int, dstW: Int, dstH: Int, out: Rect) {
+        private fun centerCrop(srcW: Int, srcH: Int, dstW: Int, dstH: Int, out: Rect) {
             if (dstW <= 0 || dstH <= 0) {
                 out.set(0, 0, srcW, srcH)
                 return

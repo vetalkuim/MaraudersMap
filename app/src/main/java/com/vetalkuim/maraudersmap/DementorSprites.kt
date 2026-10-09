@@ -3,6 +3,7 @@ package com.vetalkuim.maraudersmap
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import kotlin.math.roundToInt
 
 /**
@@ -11,8 +12,11 @@ import kotlin.math.roundToInt
  */
 class DementorSprites(private val context: Context) {
 
-    /** Картинка и маска лица — серого овала в капюшоне, который перекрашивается под фон. */
-    class Sprite(val bitmap: Bitmap, val face: Bitmap, val faceLeft: Int, val faceTop: Int)
+    /**
+     * Картинка без лица — на его месте глубина капюшона — и маска лица, серого овала в капюшоне,
+     * с его непрозрачным цветом [faceColor]. Лицо рисуется отдельно, чтобы оно могло отворачиваться.
+     */
+    class Sprite(val bitmap: Bitmap, val face: Bitmap, val faceLeft: Int, val faceTop: Int, val faceColor: Int)
 
     private val cache = HashMap<DementorVariant, Sprite>()
 
@@ -48,13 +52,15 @@ class DementorSprites(private val context: Context) {
         val bitmap = BitmapFactory.decodeResource(context.resources, res, BitmapFactory.Options().apply {
             inScaled = false
             inSampleSize = sample
+            inMutable = true
         }) ?: return null
         return faceMask(variant, bitmap)
     }
 
     /**
      * Лицо на рисунке — тёмно-серое (около 38 из 255) пятно внутри чёрного капюшона.
-     * Маска берёт его пиксели в чуть расширенном овале лица, с мягким краем.
+     * Маска берёт его пиксели в чуть расширенном овале лица, с мягким краем; цвет лица — их средний цвет.
+     * На самой картинке лицо закрашивается цветом капюшона вокруг него.
      */
     private fun faceMask(variant: DementorVariant, bitmap: Bitmap): Sprite {
         val w = bitmap.width
@@ -69,6 +75,15 @@ class DementorSprites(private val context: Context) {
         val mh = bottom - top
         val pixels = IntArray(mw * mh)
         bitmap.getPixels(pixels, 0, mw, left, top, mw, mh)
+        val weights = FloatArray(pixels.size)
+        var faceR = 0f
+        var faceG = 0f
+        var faceB = 0f
+        var faceSum = 0f
+        var hoodR = 0f
+        var hoodG = 0f
+        var hoodB = 0f
+        var hoodCount = 0
         for (i in pixels.indices) {
             val p = pixels[i]
             val alpha = p ushr 24
@@ -79,11 +94,46 @@ class DementorSprites(private val context: Context) {
                 gray > FACE_GRAY_MAX -> ((FACE_GRAY_MAX + FACE_SOFT - gray) / FACE_SOFT).coerceIn(0f, 1f)
                 else -> 1f
             }
-            pixels[i] = (weight * 255).roundToInt() shl 24
+            weights[i] = weight
+            if (weight > 0f) {
+                faceR += Color.red(p) * weight
+                faceG += Color.green(p) * weight
+                faceB += Color.blue(p) * weight
+                faceSum += weight
+            } else if (alpha >= 250 && gray < FACE_GRAY_MIN) {
+                hoodR += Color.red(p)
+                hoodG += Color.green(p)
+                hoodB += Color.blue(p)
+                hoodCount++
+            }
         }
+        val faceColor = if (faceSum > 0f) {
+            Color.rgb((faceR / faceSum).roundToInt(), (faceG / faceSum).roundToInt(), (faceB / faceSum).roundToInt())
+        } else {
+            DEFAULT_FACE
+        }
+        val hood = if (hoodCount > 0) {
+            Color.rgb((hoodR / hoodCount).roundToInt(), (hoodG / hoodCount).roundToInt(), (hoodB / hoodCount).roundToInt())
+        } else {
+            Color.BLACK
+        }
+        val faceless = IntArray(pixels.size)
+        for (i in pixels.indices) {
+            val p = pixels[i]
+            val k = weights[i]
+            faceless[i] = if (k <= 0f) p else Color.argb(
+                p ushr 24,
+                (Color.red(p) + (Color.red(hood) - Color.red(p)) * k).roundToInt(),
+                (Color.green(p) + (Color.green(hood) - Color.green(p)) * k).roundToInt(),
+                (Color.blue(p) + (Color.blue(hood) - Color.blue(p)) * k).roundToInt(),
+            )
+            pixels[i] = (k * 255).roundToInt() shl 24
+        }
+        val sprite = if (bitmap.isMutable) bitmap else bitmap.copy(Bitmap.Config.ARGB_8888, true).also { bitmap.recycle() }
+        sprite.setPixels(faceless, 0, mw, left, top, mw, mh)
         val face = Bitmap.createBitmap(mw, mh, Bitmap.Config.ALPHA_8)
         face.setPixels(pixels, 0, mw, 0, 0, mw, mh)
-        return Sprite(bitmap, face, left, top)
+        return Sprite(sprite, face, left, top, faceColor)
     }
 
     private companion object {
@@ -91,6 +141,9 @@ class DementorSprites(private val context: Context) {
         const val FACE_GRAY_MIN = 28
         const val FACE_GRAY_MAX = 60
         const val FACE_SOFT = 14f
+
+        /** Цвет лица, если на рисунке его не нашлось. */
+        val DEFAULT_FACE = Color.rgb(38, 38, 38)
 
         fun drawableFor(variant: DementorVariant): Int = when (variant.number) {
             1 -> R.drawable.dementor_1

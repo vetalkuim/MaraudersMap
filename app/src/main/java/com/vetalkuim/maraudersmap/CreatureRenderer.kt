@@ -2,14 +2,18 @@ package com.vetalkuim.maraudersmap
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sin
+
+/** Сепия, общая для всех путников и их следов; тем же цветом рисуется карта (слой 1). */
+const val INK = 0xFF3B2614.toInt()
 
 /** Рисует слой 2 — путников с их следами и подписями и дементоров над ними — поверх карты. */
 class CreatureRenderer(context: Context) {
@@ -18,6 +22,12 @@ class CreatureRenderer(context: Context) {
     /** Дементоры непрозрачные: сквозь балахон карта не просвечивает. */
     private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val facePaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+
+    /** Оставляет от силуэта лица только то, что внутри овала лица в капюшоне. */
+    private val faceClipPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply {
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+    }
+    private val faceRect = RectF()
     private val src = Rect()
     private val dst = RectF()
     private val onScreen = HashSet<DementorVariant>()
@@ -37,14 +47,13 @@ class CreatureRenderer(context: Context) {
         offset(-FOOT_CENTER_X, -FOOT_CENTER_Y)
     }
 
-    /** [backgroundAt] — цвет фона в точке экрана: лицо дементора — прорезь, сквозь которую виден фон. */
-    fun draw(canvas: Canvas, creatures: MapCreatures, backgroundAt: (Float, Float) -> Int) {
+    fun draw(canvas: Canvas, creatures: MapCreatures) {
         drawFootprints(canvas, creatures)
         drawLabels(canvas, creatures)
         onScreen.clear()
         for (d in creatures.dementors) {
             onScreen += d.variant
-            drawDementor(canvas, creatures, d, backgroundAt)
+            drawDementor(canvas, creatures, d)
         }
         sprites.retain(onScreen)
     }
@@ -55,8 +64,10 @@ class CreatureRenderer(context: Context) {
      * Картинка рисуется горизонтальными полосами: низ балахона колышется волной, капюшон
      * иногда чуть сдвигается вбок — голова поворачивается; вся фигура слегка покачивается.
      * Рядом с путником голова смотрит на него; сама фигура не разворачивается.
+     * Лицо под капюшоном непрозрачное и рисуется поверх: отворачиваясь, его силуэт перетекает вбок
+     * и скрывается за краем капюшона.
      */
-    private fun drawDementor(canvas: Canvas, creatures: MapCreatures, d: Dementor, backgroundAt: (Float, Float) -> Int) {
+    private fun drawDementor(canvas: Canvas, creatures: MapCreatures, d: Dementor) {
         val h = creatures.dementorHeight(d.scale)
         val w = h * d.variant.aspect
         val sprite = sprites.get(d.variant, creatures.dementorHeight(1f)) ?: return
@@ -83,10 +94,29 @@ class CreatureRenderer(context: Context) {
         val sy = h / bitmap.height
         val faceLeft = -w / 2 + sprite.faceLeft * sx + head
         val faceTop = -h / 2 + sprite.faceTop * sy
-        dst.set(faceLeft, faceTop, faceLeft + sprite.face.width * sx, faceTop + sprite.face.height * sy)
-        facePaint.color = shade(backgroundAt(d.x + dst.centerX(), d.y + dst.centerY()))
-        canvas.drawBitmap(sprite.face, null, dst, facePaint)
+        faceRect.set(faceLeft, faceTop, faceLeft + sprite.face.width * sx, faceTop + sprite.face.height * sy)
+        drawFace(canvas, sprite, d)
         canvas.restoreToCount(save)
+    }
+
+    /**
+     * Силуэт лица, сдвинутый вбок на долю своей ширины, виден только внутри овала лица:
+     * 1 — лицо целиком на месте, 0 — ушло за край капюшона в сторону [Dementor.faceSide].
+     */
+    private fun drawFace(canvas: Canvas, sprite: DementorSprites.Sprite, d: Dementor) {
+        val shown = easeInOut(d.face.coerceIn(0f, 1f))
+        if (shown <= 0f) return
+        facePaint.color = sprite.faceColor
+        if (shown >= 1f) {
+            canvas.drawBitmap(sprite.face, null, faceRect, facePaint)
+            return
+        }
+        val shift = d.faceSide * (1f - shown) * faceRect.width()
+        val layer = canvas.saveLayer(faceRect, null)
+        dst.set(faceRect.left + shift, faceRect.top, faceRect.right + shift, faceRect.bottom)
+        canvas.drawBitmap(sprite.face, null, dst, facePaint)
+        canvas.drawBitmap(sprite.face, null, faceRect, faceClipPaint)
+        canvas.restoreToCount(layer)
     }
 
     private fun drawFootprints(canvas: Canvas, creatures: MapCreatures) {
@@ -127,9 +157,6 @@ class CreatureRenderer(context: Context) {
         const val HEAD_END = 0.24f
         const val HEAD_SHIFT = 0.035f
 
-        /** Лицо — затемнённый на 30% фон под ним. */
-        const val FACE_SHADE = 0.7f
-
         /** Сдвиг полосы на высоте [f] (0 — верх, 1 — низ) в долях ширины. */
         fun stripShift(f: Float, t: Float, seed: Float): Float {
             if (f <= HEM_START) return 0f
@@ -151,14 +178,8 @@ class CreatureRenderer(context: Context) {
             return if (wave < 0f) -turn else turn
         }
 
-        fun shade(color: Int): Int = Color.rgb(
-            (Color.red(color) * FACE_SHADE).toInt(),
-            (Color.green(color) * FACE_SHADE).toInt(),
-            (Color.blue(color) * FACE_SHADE).toInt(),
-        )
+        fun easeInOut(t: Float): Float = t * t * (3f - 2f * t)
 
-        /** Сепия, общая для всех путников. */
-        const val INK = 0xFF3B2614.toInt()
         const val LABEL_SIZE_DP = 20f
 
         /** Длина следа на экране и длина ступни в единицах SVG (от носка до пятки). */

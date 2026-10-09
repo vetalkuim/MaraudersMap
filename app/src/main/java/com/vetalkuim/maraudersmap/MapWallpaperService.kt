@@ -22,6 +22,7 @@ class MapWallpaperService : WallpaperService() {
         private var visible = false
         private val drawRunnable = Runnable { drawFrame() }
         private val loader: ExecutorService = Executors.newSingleThreadExecutor()
+        @Volatile
         private var mapGeneration = 0
 
         /** Слой 2 живёт, пока жив движок: поворот экрана только меняет его размер. */
@@ -29,6 +30,10 @@ class MapWallpaperService : WallpaperService() {
 
         /** Время прошлого кадра; 0 — отсчёт начнётся заново, без скачка после паузы. */
         private var lastFrameAt = 0L
+
+        /** Размер поверхности; 0 — ещё неизвестен. */
+        private var surfaceWidth = 0
+        private var surfaceHeight = 0
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
@@ -63,10 +68,18 @@ class MapWallpaperService : WallpaperService() {
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
+            surfaceWidth = width
+            surfaceHeight = height
+            val raster = renderer.mapRaster
+            if (raster == null || raster.width != width || raster.height != height) loadMap()
             val first = creatures.width == 0f
             creatures.resize(width.toFloat(), height.toFloat())
-            // Предпросмотр и первый показ сразу с путниками и цепочкой следов, без касания.
-            if (first) creatures.warmUp()
+            // Предпросмотр и первый показ сразу с путниками и цепочкой следов, без касания;
+            // если карта уже есть, следы с самого начала идут по чистой бумаге.
+            if (first) {
+                renderer.updateWalkArea(width, height)
+                creatures.warmUp()
+            }
             drawFrame()
         }
 
@@ -115,18 +128,37 @@ class MapWallpaperService : WallpaperService() {
             }
         }
 
-        /** Разбор SVG занимает заметное время, поэтому слой карты грузится в фоне. */
+        /**
+         * Слой 1 должен быть на месте с первого кадра: готовая карта под размер экрана берётся
+         * из кэша на диске сразу. Без кэша (впервые, новая карта или новый размер) SVG разбирается
+         * и растеризуется в фоне, и результат сохраняется в кэш для следующих запусков.
+         */
         private fun loadMap() {
             val generation = ++mapGeneration
             val layer = MapPrefs.mapLayer(prefs)
+            val stamp = prefs.getLong(MapPrefs.KEY_CUSTOM_STAMP, 0L)
             if (layer == MapLayer.NONE) {
-                renderer.mapImage = null
+                renderer.mapRaster = null
+                if (visible) drawFrame()
+                return
+            }
+            val width = surfaceWidth
+            val height = surfaceHeight
+            if (width <= 0 || height <= 0) {
+                // Размер ещё неизвестен — заранее разбираем SVG, растеризация будет после onSurfaceChanged.
+                loader.execute { loadImage(layer, stamp) }
+                return
+            }
+            val cached = MapLayers.cachedRaster(this@MapWallpaperService, layer, stamp, width, height)
+            if (cached != null) {
+                renderer.mapRaster = cached
                 if (visible) drawFrame()
                 return
             }
             loader.execute {
-                val image = try {
-                    MapLayers.load(this@MapWallpaperService, layer)
+                if (generation != mapGeneration) return@execute
+                val raster = try {
+                    MapLayers.raster(this@MapWallpaperService, layer, stamp, width, height)
                 } catch (e: Exception) {
                     Log.w(TAG, "Cannot load map layer $layer", e)
                     null
@@ -136,9 +168,19 @@ class MapWallpaperService : WallpaperService() {
                 }
                 handler.post {
                     if (generation != mapGeneration) return@post
-                    renderer.mapImage = image
+                    renderer.mapRaster = raster
                     if (visible) drawFrame()
                 }
+            }
+        }
+
+        private fun loadImage(layer: MapLayer, stamp: Long) {
+            try {
+                MapLayers.image(this@MapWallpaperService, layer, stamp)
+            } catch (e: Exception) {
+                Log.w(TAG, "Cannot load map layer $layer", e)
+            } catch (e: OutOfMemoryError) {
+                Log.w(TAG, "Map layer $layer is too large", e)
             }
         }
 
