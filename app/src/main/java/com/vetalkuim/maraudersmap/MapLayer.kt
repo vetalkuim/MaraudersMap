@@ -12,8 +12,7 @@ import java.io.IOException
 /** Слой 1 — нарисованная карта поверх пергамента (слой 0). */
 enum class MapLayer(val title: Int, val svg: Int) {
     NONE(R.string.map_none, 0),
-    HOGWARTS(R.string.map_hogwarts, R.raw.map_hogwarts),
-    HOGWARTS_2(R.string.map_hogwarts_2, R.raw.map_hogwarts_2);
+    HOGWARTS(R.string.map_hogwarts, R.raw.map_hogwarts);
 
     companion object {
         val DEFAULT = HOGWARTS
