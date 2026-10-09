@@ -16,6 +16,7 @@ import android.provider.MediaStore
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -348,9 +349,10 @@ class SettingsActivity : Activity() {
         val generation = ++previewGeneration
 
         worker.execute {
-            if (layer != previewLayer || mapStamp != previewMapStamp) {
+            val newMap = layer != previewLayer || mapStamp != previewMapStamp
+            if (newMap) {
                 previewRenderer.mapImage = try {
-                    MapLayers.load(this, layer)
+                    MapLayers.image(this, layer, mapStamp)
                 } catch (e: Exception) {
                     Log.w(TAG, "Cannot load map layer $layer", e)
                     null
@@ -382,6 +384,28 @@ class SettingsActivity : Activity() {
             mainHandler.post {
                 if (generation == previewGeneration && !isDestroyed) preview.setImageBitmap(bitmap)
             }
+            // После превью, чтобы не задерживать его.
+            if (newMap) warmMapCache(layer, mapStamp)
+        }
+    }
+
+    /**
+     * Заранее готовит карту под полный экран в кэше на диске, чтобы обои показали её
+     * с первого кадра, а не после разбора SVG. Вызывается в фоновом потоке.
+     */
+    private fun warmMapCache(layer: MapLayer, stamp: Long) {
+        if (layer == MapLayer.NONE) return
+        val real = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getRealMetrics(real)
+        val width = minOf(real.widthPixels, real.heightPixels)
+        val height = maxOf(real.widthPixels, real.heightPixels)
+        try {
+            MapLayers.raster(this, layer, stamp, width, height)
+        } catch (e: Exception) {
+            Log.w(TAG, "Cannot prepare map layer $layer", e)
+        } catch (e: OutOfMemoryError) {
+            Log.w(TAG, "Map layer $layer is too large", e)
         }
     }
 

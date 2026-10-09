@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import java.io.File
 import java.io.IOException
 
@@ -40,6 +41,11 @@ object MapLayers {
     private const val CUSTOM_FILE = "map_layer_custom"
     private const val MAX_FILE_BYTES = 32L * 1024 * 1024
     private const val MAX_BITMAP_SIDE = 4096
+    private const val RASTER_DIR = "map_raster"
+    private const val TAG = "MapLayers"
+
+    /** Последнее разобранное изображение: новые обои и превью не разбирают SVG заново. */
+    private var parsed: Pair<String, MapImage>? = null
 
     /** Загружает изображение слоя; долго для больших SVG, поэтому вызывается не в главном потоке. */
     fun load(context: Context, layer: MapLayer): MapImage? = when (layer) {
@@ -47,6 +53,78 @@ object MapLayers {
         MapLayer.HOGWARTS -> context.resources.openRawResource(R.raw.map_hogwarts).use(SvgImage::parse)
         MapLayer.CUSTOM -> customFile(context).takeIf(File::exists)?.let { loadFile(it) }
     }
+
+    /** Как [load], но разобранное изображение берётся из памяти, если оно уже было загружено. */
+    fun image(context: Context, layer: MapLayer, stamp: Long): MapImage? {
+        if (layer == MapLayer.NONE) return null
+        // Метка времени меняется только у своей карты.
+        val key = if (layer == MapLayer.CUSTOM) "${layer.name}_$stamp" else layer.name
+        synchronized(this) { parsed?.let { (k, image) -> if (k == key) return image } }
+        val image = load(context, layer) ?: return null
+        synchronized(this) { parsed = key to image }
+        return image
+    }
+
+    /**
+     * Готовая карта под экран [width]×[height] из кэша на диске; null — ещё не растеризована.
+     * Читается быстро, поэтому подходит для первого кадра.
+     */
+    fun cachedRaster(context: Context, layer: MapLayer, stamp: Long, width: Int, height: Int): Bitmap? {
+        val file = rasterFile(context, layer, stamp, width, height) ?: return null
+        if (!file.exists()) return null
+        return try {
+            BitmapFactory.decodeFile(file.path)?.takeIf { it.width == width && it.height == height }
+        } catch (e: OutOfMemoryError) {
+            null
+        }
+    }
+
+    /**
+     * Готовая карта под экран: из кэша на диске, а без него — разбор и растеризация с сохранением в кэш.
+     * Долго, поэтому вызывается не в главном потоке.
+     */
+    fun raster(context: Context, layer: MapLayer, stamp: Long, width: Int, height: Int): Bitmap? {
+        cachedRaster(context, layer, stamp, width, height)?.let { return it }
+        val image = image(context, layer, stamp) ?: return null
+        val bitmap = MapRenderer.rasterize(image, width, height) ?: return null
+        val file = rasterFile(context, layer, stamp, width, height) ?: return bitmap
+        try {
+            // Прежние карты и версии не нужны; эта же карта под другие размеры экрана остаётся.
+            val current = file.name.removePrefix(sizePrefix(width, height))
+            file.parentFile?.listFiles()?.forEach { other ->
+                if (!other.name.endsWith("_$current")) other.delete()
+            }
+            // Свой временный файл: обои и настройки могут готовить карту одновременно.
+            val tmp = File.createTempFile(file.nameWithoutExtension, ".tmp", file.parentFile)
+            tmp.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            if (!tmp.renameTo(file)) tmp.delete()
+        } catch (e: IOException) {
+            Log.w(TAG, "Cannot cache map raster", e)
+        }
+        return bitmap
+    }
+
+    /**
+     * Файл кэша: карта, её версия и размер экрана. Для встроенной карты версия — время установки
+     * приложения, чтобы после обновления карта перерисовалась.
+     */
+    private fun rasterFile(context: Context, layer: MapLayer, stamp: Long, width: Int, height: Int): File? {
+        if (layer == MapLayer.NONE || width <= 0 || height <= 0) return null
+        val version = when (layer) {
+            MapLayer.CUSTOM -> stamp
+            else -> try {
+                context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+            } catch (e: Exception) {
+                0L
+            }
+        }
+        val dir = File(context.cacheDir, RASTER_DIR)
+        if (!dir.isDirectory && !dir.mkdirs()) return null
+        return File(dir, "${sizePrefix(width, height)}${layer.name}_$version.png")
+    }
+
+    /** Кэш хранит по картинке на каждый размер экрана — например, для обеих ориентаций. */
+    private fun sizePrefix(width: Int, height: Int) = "${width}x${height}_"
 
     /**
      * Копирует выбранный пользователем SVG или PNG во внутреннее хранилище, чтобы обои
