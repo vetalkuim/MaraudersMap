@@ -37,7 +37,6 @@ class MapWallpaperService : WallpaperService() {
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
-            renderer.background = MapPrefs.background(prefs)
             renderer.creatures = creatures
             renderer.mapIntensity = MapPrefs.mapIntensity(prefs)
             creatures.travelerNames = MapPrefs.travelerNames(prefs)
@@ -104,12 +103,6 @@ class MapWallpaperService : WallpaperService() {
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String?) {
             when (key) {
-                MapPrefs.KEY_BACKGROUND -> {
-                    renderer.background = MapPrefs.background(sharedPreferences)
-                    loadMap() // фон с картой убирает слой 1, другой фон возвращает
-                    drawFrame()
-                }
-                MapPrefs.KEY_MAP_LAYER -> loadMap()
                 // Новые приходят с краёв, лишние уходят за край — никто не исчезает на месте.
                 MapPrefs.KEY_TRAVELER_NAMES, MapPrefs.KEY_DEMENTORS -> {
                     creatures.travelerNames = MapPrefs.travelerNames(sharedPreferences)
@@ -125,25 +118,19 @@ class MapWallpaperService : WallpaperService() {
 
         /**
          * Слой 1 должен быть на месте с первого кадра: готовая карта под размер экрана берётся
-         * из кэша на диске сразу. Без кэша (впервые, новая карта или новый размер) SVG разбирается
+         * из кэша на диске сразу. Без кэша (впервые, после обновления или на новом размере) SVG разбирается
          * и растеризуется в фоне, и результат сохраняется в кэш для следующих запусков.
          */
         private fun loadMap() {
             val generation = ++mapGeneration
-            val layer = MapPrefs.visibleMapLayer(prefs)
-            if (layer == MapLayer.NONE) {
-                renderer.mapRaster = null
-                if (visible) drawFrame()
-                return
-            }
             val width = surfaceWidth
             val height = surfaceHeight
             if (width <= 0 || height <= 0) {
                 // Размер ещё неизвестен — заранее разбираем SVG, растеризация будет после onSurfaceChanged.
-                loader.execute { loadImage(layer) }
+                loader.execute { loadImage() }
                 return
             }
-            val cached = MapLayers.cachedRaster(this@MapWallpaperService, layer, width, height)
+            val cached = MapLayers.cachedRaster(this@MapWallpaperService, width, height)
             if (cached != null) {
                 renderer.mapRaster = cached
                 if (visible) drawFrame()
@@ -152,12 +139,12 @@ class MapWallpaperService : WallpaperService() {
             loader.execute {
                 if (generation != mapGeneration) return@execute
                 val raster = try {
-                    MapLayers.raster(this@MapWallpaperService, layer, width, height)
+                    MapLayers.raster(this@MapWallpaperService, width, height)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Cannot load map layer $layer", e)
+                    Log.w(TAG, "Cannot load map", e)
                     null
                 } catch (e: OutOfMemoryError) {
-                    Log.w(TAG, "Map layer $layer is too large", e)
+                    Log.w(TAG, "Map is too large", e)
                     null
                 }
                 handler.post {
@@ -168,13 +155,13 @@ class MapWallpaperService : WallpaperService() {
             }
         }
 
-        private fun loadImage(layer: MapLayer) {
+        private fun loadImage() {
             try {
-                MapLayers.image(this@MapWallpaperService, layer)
+                MapLayers.image(this@MapWallpaperService)
             } catch (e: Exception) {
-                Log.w(TAG, "Cannot load map layer $layer", e)
+                Log.w(TAG, "Cannot load map", e)
             } catch (e: OutOfMemoryError) {
-                Log.w(TAG, "Map layer $layer is too large", e)
+                Log.w(TAG, "Map is too large", e)
             }
         }
 

@@ -12,15 +12,12 @@ import android.text.TextWatcher
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -32,12 +29,6 @@ class SettingsActivity : Activity() {
     /** Подготовка карты — вне главного потока, строго по очереди. */
     private val worker: ExecutorService = Executors.newSingleThreadExecutor()
 
-    /** Карта, для которой кэш уже готовится; меняется только в главном потоке. */
-    private var warmedLayer: MapLayer? = null
-
-    private lateinit var backgroundGroup: RadioGroup
-    private lateinit var mapSection: View
-    private lateinit var mapGroup: RadioGroup
     private lateinit var mapIntensity: SeekBar
     private lateinit var mapIntensityLabel: TextView
     private lateinit var dementorCount: SeekBar
@@ -48,16 +39,10 @@ class SettingsActivity : Activity() {
     /** Имена путников в порядке строк [travelerList], включая пустые. */
     private val travelerNames = mutableListOf<String>()
 
-    /** Подавляет обработчики, когда отметка переключается программно. */
-    private var ignoreChecks = false
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
 
-        backgroundGroup = findViewById(R.id.background_group)
-        mapSection = findViewById(R.id.map_section)
-        mapGroup = findViewById(R.id.map_group)
         mapIntensity = findViewById(R.id.map_intensity)
         mapIntensityLabel = findViewById(R.id.map_intensity_label)
         dementorCount = findViewById(R.id.dementor_count)
@@ -78,22 +63,8 @@ class SettingsActivity : Activity() {
             getSystemService(InputMethodManager::class.java).showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
         }
 
-        MapBackground.entries.forEach { bg -> backgroundGroup.addView(radioButton(bg, bg.title)) }
-        MapLayer.entries.forEach { layer -> mapGroup.addView(radioButton(layer, layer.title)) }
         showSaved()
-
-        backgroundGroup.setOnCheckedChangeListener { g, checkedId ->
-            if (ignoreChecks) return@setOnCheckedChangeListener
-            val bg = g.findViewById<View>(checkedId)?.tag as? MapBackground ?: return@setOnCheckedChangeListener
-            MapPrefs.setBackground(this, bg)
-            showSaved()
-        }
-        mapGroup.setOnCheckedChangeListener { g, checkedId ->
-            if (ignoreChecks) return@setOnCheckedChangeListener
-            val layer = g.findViewById<View>(checkedId)?.tag as? MapLayer ?: return@setOnCheckedChangeListener
-            MapPrefs.setMapLayer(this, layer)
-            showSaved()
-        }
+        warmMapCache()
 
         val sliders = object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -123,35 +94,14 @@ class SettingsActivity : Activity() {
         super.onDestroy()
     }
 
-    private fun radioButton(tag: Any, title: Int): RadioButton {
-        val paddingV = (12 * resources.displayMetrics.density).toInt()
-        return RadioButton(this).apply {
-            id = View.generateViewId()
-            this.tag = tag
-            setText(title)
-            textSize = 16f
-            setPadding(paddingLeft, paddingV, paddingRight, paddingV)
-        }
-    }
-
-    /** Отмечает сохранённые в настройках фон и карту. */
+    /** Показывает сохранённые значения ползунков. */
     private fun showSaved() {
         val prefs = MapPrefs.get(this)
-        val background = MapPrefs.background(prefs)
-        val layer = MapPrefs.mapLayer(prefs)
-        ignoreChecks = true
-        check(backgroundGroup, background)
-        check(mapGroup, layer)
-        ignoreChecks = false
-
         val intensity = MapPrefs.mapIntensity(prefs)
         val dementors = MapPrefs.dementorCount(prefs)
         mapIntensity.progress = intensity
         dementorCount.progress = dementors
         showSliders(intensity, dementors)
-
-        mapSection.visibility = if (background.includesMap) View.GONE else View.VISIBLE
-        warmMapCache(MapPrefs.visibleMapLayer(prefs))
     }
 
     private fun showSliders(intensity: Int, dementors: Int) {
@@ -213,20 +163,11 @@ class SettingsActivity : Activity() {
         addTraveler.isEnabled = travelerNames.size < MapCreatures.MAX_TRAVELERS
     }
 
-    private fun check(group: RadioGroup, tag: Any) {
-        for (i in 0 until group.childCount) {
-            val button = group.getChildAt(i) as RadioButton
-            if (button.tag == tag && !button.isChecked) button.isChecked = true
-        }
-    }
-
     /**
      * Заранее готовит карту под полный экран в кэше на диске, чтобы обои показали её
-     * с первого кадра, а не после разбора SVG. Готовит в фоне, один раз на каждую выбранную карту.
+     * с первого кадра, а не после разбора SVG. Готовит в фоне.
      */
-    private fun warmMapCache(layer: MapLayer) {
-        if (layer == MapLayer.NONE || layer == warmedLayer) return
-        warmedLayer = layer
+    private fun warmMapCache() {
         val real = DisplayMetrics()
         @Suppress("DEPRECATION")
         windowManager.defaultDisplay.getRealMetrics(real)
@@ -234,11 +175,11 @@ class SettingsActivity : Activity() {
         val height = maxOf(real.widthPixels, real.heightPixels)
         worker.execute {
             try {
-                MapLayers.raster(this, layer, width, height)
+                MapLayers.raster(this, width, height)
             } catch (e: Exception) {
-                Log.w(TAG, "Cannot prepare map layer $layer", e)
+                Log.w(TAG, "Cannot prepare map", e)
             } catch (e: OutOfMemoryError) {
-                Log.w(TAG, "Map layer $layer is too large", e)
+                Log.w(TAG, "Map is too large", e)
             }
         }
     }
