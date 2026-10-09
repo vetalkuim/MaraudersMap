@@ -106,6 +106,7 @@ class MapWallpaperService : WallpaperService() {
             when (key) {
                 MapPrefs.KEY_BACKGROUND -> {
                     renderer.background = MapPrefs.background(sharedPreferences)
+                    loadMap() // фон с картой убирает слой 1, другой фон возвращает
                     drawFrame()
                 }
                 MapPrefs.KEY_CUSTOM_VERSION -> {
@@ -133,7 +134,7 @@ class MapWallpaperService : WallpaperService() {
          */
         private fun loadMap() {
             val generation = ++mapGeneration
-            val layer = MapPrefs.mapLayer(prefs)
+            val layer = MapPrefs.visibleMapLayer(prefs)
             val stamp = prefs.getLong(MapPrefs.KEY_CUSTOM_STAMP, 0L)
             if (layer == MapLayer.NONE) {
                 renderer.mapRaster = null

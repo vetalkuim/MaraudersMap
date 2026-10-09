@@ -45,6 +45,7 @@ class SettingsActivity : Activity() {
 
     private lateinit var backgroundGroup: RadioGroup
     private lateinit var pickImageButton: Button
+    private lateinit var mapSection: View
     private lateinit var mapGroup: RadioGroup
     private lateinit var customMapName: TextView
     private lateinit var mapIntensity: SeekBar
@@ -66,6 +67,7 @@ class SettingsActivity : Activity() {
 
         backgroundGroup = findViewById(R.id.background_group)
         pickImageButton = findViewById(R.id.pick_image)
+        mapSection = findViewById(R.id.map_section)
         mapGroup = findViewById(R.id.map_group)
         customMapName = findViewById(R.id.map_custom_name)
         mapIntensity = findViewById(R.id.map_intensity)
@@ -184,10 +186,11 @@ class SettingsActivity : Activity() {
         showSliders(intensity, dementors)
 
         pickImageButton.visibility = if (background == MapBackground.CUSTOM) View.VISIBLE else View.GONE
+        mapSection.visibility = if (background.includesMap) View.GONE else View.VISIBLE
         val name = MapPrefs.customMapName(prefs)
         customMapName.visibility = if (name == null) View.GONE else View.VISIBLE
         if (name != null) customMapName.text = getString(R.string.map_custom_file, name)
-        warmMapCache(layer, prefs.getLong(MapPrefs.KEY_CUSTOM_STAMP, 0L))
+        warmMapCache(MapPrefs.visibleMapLayer(prefs), prefs.getLong(MapPrefs.KEY_CUSTOM_STAMP, 0L))
     }
 
     private fun showSliders(intensity: Int, dementors: Int) {
