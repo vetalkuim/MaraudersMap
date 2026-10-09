@@ -9,7 +9,6 @@
     <string name="map_title">Карта</string>
     <string name="map_none">Без карты</string>
     <string name="map_hogwarts">Вариант 1</string>
-    <string name="map_hogwarts_2">Вариант 2</string>
     <string name="creatures_title">Обитатели карты</string>
     <string name="map_intensity">Интенсивность цвета карты: %1$d%%</string>
     <string name="travelers_title">Путники</string>
