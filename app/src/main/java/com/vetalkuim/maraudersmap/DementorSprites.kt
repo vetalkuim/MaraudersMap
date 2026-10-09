@@ -14,7 +14,7 @@ class DementorSprites(private val context: Context) {
 
     /**
      * Картинка без лица — на его месте глубина капюшона — и маска лица, серого овала в капюшоне.
-     * Лицо рисуется отдельно, цветом пергамента, чтобы оно могло отворачиваться.
+     * Лицо рисуется отдельно, тёмно-серым, чтобы оно могло отворачиваться.
      */
     class Sprite(val bitmap: Bitmap, val face: Bitmap, val faceLeft: Int, val faceTop: Int)
 
