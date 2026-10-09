@@ -36,55 +36,64 @@
             android:textColor="@color/ink"
             android:visibility="gone" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:fontFamily="serif"
-            android:text="@string/map_title"
-            android:textColor="@color/parchment"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-        <RadioGroup
-            android:id="@+id/map_group"
+        <!-- Слой 1. Скрыт, если фон уже содержит карту (MapBackground.includesMap). -->
+        <LinearLayout
+            android:id="@+id/map_section"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp" />
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/map_custom_name"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="@color/parchment_dark"
-            android:textSize="14sp"
-            android:visibility="gone" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:fontFamily="serif"
+                android:text="@string/map_title"
+                android:textColor="@color/parchment"
+                android:textSize="20sp"
+                android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/pick_map"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="@color/parchment_dark"
-            android:text="@string/map_pick"
-            android:textColor="@color/ink" />
+            <RadioGroup
+                android:id="@+id/map_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" />
 
-        <TextView
-            android:id="@+id/map_intensity_label"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:textColor="@color/parchment"
-            android:textSize="16sp" />
+            <TextView
+                android:id="@+id/map_custom_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="@color/parchment_dark"
+                android:textSize="14sp"
+                android:visibility="gone" />
 
-        <SeekBar
-            android:id="@+id/map_intensity"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:progressTint="@color/parchment"
-            android:thumbTint="@color/parchment" />
+            <Button
+                android:id="@+id/pick_map"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/parchment_dark"
+                android:text="@string/map_pick"
+                android:textColor="@color/ink" />
+
+            <TextView
+                android:id="@+id/map_intensity_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:textColor="@color/parchment"
+                android:textSize="16sp" />
+
+            <SeekBar
+                android:id="@+id/map_intensity"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:progressTint="@color/parchment"
+                android:thumbTint="@color/parchment" />
+
+        </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"

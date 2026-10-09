@@ -8,12 +8,13 @@ import org.json.JSONException
 /**
  * Фоновые варианты. [CUSTOM] — картинка пользователя ([CustomBackground]), [drawable] у неё —
  * запасной фон, пока картинка не выбрана.
+ * [includesMap] — картинка уже с нарисованной картой: она заменяет слои 0 и 1, отдельная карта не рисуется.
  */
-enum class MapBackground(val drawable: Int, val title: Int) {
+enum class MapBackground(val drawable: Int, val title: Int, val includesMap: Boolean = false) {
     FOLD_WIDE(R.drawable.bg_fold_wide, R.string.bg_fold_wide),
     FOLD_THIN(R.drawable.bg_fold_thin, R.string.bg_fold_thin),
     PLAIN(R.drawable.bg_plain, R.string.bg_plain),
-    POSTER(R.drawable.bg_poster, R.string.bg_poster),
+    POSTER(R.drawable.bg_poster, R.string.bg_poster, includesMap = true),
     CUSTOM(R.drawable.bg_plain, R.string.bg_custom);
 
     companion object {
@@ -60,6 +61,10 @@ object MapPrefs {
         prefs.getString(KEY_MAP_LAYER, null)
             ?.let { name -> MapLayer.entries.firstOrNull { it.name == name } }
             ?: MapLayer.DEFAULT
+
+    /** Слой 1, который действительно рисуется: при фоне с картой — никакого, выбор при этом сохраняется. */
+    fun visibleMapLayer(prefs: SharedPreferences): MapLayer =
+        if (background(prefs).includesMap) MapLayer.NONE else mapLayer(prefs)
 
     fun setMapLayer(context: Context, layer: MapLayer) {
         get(context).edit().putString(KEY_MAP_LAYER, layer.name).apply()
