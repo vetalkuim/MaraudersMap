@@ -187,6 +187,23 @@ class DementorTest {
     }
 
     @Test
+    fun `и без путников дементор время от времени отворачивает лицо и поворачивает обратно`() {
+        val world = world(1, travelers = 0)
+        var dipped = false
+        var hidden = false
+        var back = false
+        world.run(120f) {
+            val d = dementors.single()
+            if (d.scale < 0.95f) dipped = true
+            if (d.face == 0f) hidden = true
+            if (hidden && d.face == 1f) back = true
+        }
+        assertTrue(dipped)
+        assertTrue(hidden)
+        assertTrue(back)
+    }
+
+    @Test
     fun `лицо уходит, пока дементор уменьшается, и возвращается, пока увеличивается`() {
         val world = world(MapCreatures.MAX_COUNT, travelers = MapCreatures.MAX_COUNT)
         val lastScale = HashMap<Dementor, Float>()
