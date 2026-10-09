@@ -68,10 +68,6 @@ class MapRenderer(private val context: Context) {
     var creatures: MapCreatures? = null
 
     private val creatureRenderer by lazy { CreatureRenderer(context) }
-    private val sampleRect = Rect()
-    private var canvasWidth = 0
-    private var canvasHeight = 0
-    private val backgroundAt: (Float, Float) -> Int = ::backgroundColorAt
 
     var background: MapBackground = MapBackground.DEFAULT
         set(value) {
@@ -96,8 +92,6 @@ class MapRenderer(private val context: Context) {
         get() = background == MapBackground.UNFOLD && SystemClock.uptimeMillis() - unfoldStart < UNFOLD_TOTAL_MS
 
     fun draw(canvas: Canvas) {
-        canvasWidth = canvas.width
-        canvasHeight = canvas.height
         canvas.drawColor(Color.BLACK)
         drawBackground(canvas)
         drawMap(canvas)
@@ -169,23 +163,12 @@ class MapRenderer(private val context: Context) {
         val alpha = revealAlpha()
         if (alpha <= 0) return
         if (alpha >= 255) {
-            creatureRenderer.draw(canvas, world, backgroundAt)
+            creatureRenderer.draw(canvas, world)
             return
         }
         val save = canvas.saveLayerAlpha(null, alpha)
-        creatureRenderer.draw(canvas, world, backgroundAt)
+        creatureRenderer.draw(canvas, world)
         canvas.restoreToCount(save)
-    }
-
-    /** Цвет фона (без карты) в точке экрана; в режиме раскрытия — развёрнутого листа. */
-    private fun backgroundColorAt(x: Float, y: Float): Int {
-        if (canvasWidth <= 0 || canvasHeight <= 0) return Color.BLACK
-        val bg = if (background == MapBackground.UNFOLD) MapBackground.unfoldFrames.last() else background
-        val bitmap = bitmapFor(bg)
-        centerCrop(bitmap.width, bitmap.height, canvasWidth, canvasHeight, sampleRect)
-        val px = (sampleRect.left + x / canvasWidth * sampleRect.width()).toInt().coerceIn(0, bitmap.width - 1)
-        val py = (sampleRect.top + y / canvasHeight * sampleRect.height()).toInt().coerceIn(0, bitmap.height - 1)
-        return bitmap.getPixel(px, py)
     }
 
     /**
