@@ -5,12 +5,7 @@ import android.app.WallpaperManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.provider.MediaStore
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -34,20 +29,15 @@ import java.util.concurrent.Executors
 
 class SettingsActivity : Activity() {
 
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    /** Импорт файлов и подготовка карты — вне главного потока, строго по очереди. */
+    /** Подготовка карты — вне главного потока, строго по очереди. */
     private val worker: ExecutorService = Executors.newSingleThreadExecutor()
 
     /** Карта, для которой кэш уже готовится; меняется только в главном потоке. */
     private var warmedLayer: MapLayer? = null
-    private var warmedStamp = -1L
 
     private lateinit var backgroundGroup: RadioGroup
-    private lateinit var pickImageButton: Button
     private lateinit var mapSection: View
     private lateinit var mapGroup: RadioGroup
-    private lateinit var customMapName: TextView
     private lateinit var mapIntensity: SeekBar
     private lateinit var mapIntensityLabel: TextView
     private lateinit var dementorCount: SeekBar
@@ -66,10 +56,8 @@ class SettingsActivity : Activity() {
         setContentView(R.layout.activity_settings)
 
         backgroundGroup = findViewById(R.id.background_group)
-        pickImageButton = findViewById(R.id.pick_image)
         mapSection = findViewById(R.id.map_section)
         mapGroup = findViewById(R.id.map_group)
-        customMapName = findViewById(R.id.map_custom_name)
         mapIntensity = findViewById(R.id.map_intensity)
         mapIntensityLabel = findViewById(R.id.map_intensity_label)
         dementorCount = findViewById(R.id.dementor_count)
@@ -97,23 +85,14 @@ class SettingsActivity : Activity() {
         backgroundGroup.setOnCheckedChangeListener { g, checkedId ->
             if (ignoreChecks) return@setOnCheckedChangeListener
             val bg = g.findViewById<View>(checkedId)?.tag as? MapBackground ?: return@setOnCheckedChangeListener
-            if (bg == MapBackground.CUSTOM && !CustomBackground.exists(this)) {
-                // Своей картинки ещё нет — сначала выбрать её; отметка сохранится после импорта.
-                pickImage()
-            } else {
-                MapPrefs.setBackground(this, bg)
-                showSaved()
-            }
+            MapPrefs.setBackground(this, bg)
+            showSaved()
         }
         mapGroup.setOnCheckedChangeListener { g, checkedId ->
             if (ignoreChecks) return@setOnCheckedChangeListener
             val layer = g.findViewById<View>(checkedId)?.tag as? MapLayer ?: return@setOnCheckedChangeListener
-            if (layer == MapLayer.CUSTOM && MapPrefs.customMapName(MapPrefs.get(this)) == null) {
-                pickMapFile()
-            } else {
-                MapPrefs.setMapLayer(this, layer)
-                showSaved()
-            }
+            MapPrefs.setMapLayer(this, layer)
+            showSaved()
         }
 
         val sliders = object : SeekBar.OnSeekBarChangeListener {
@@ -136,26 +115,12 @@ class SettingsActivity : Activity() {
         mapIntensity.setOnSeekBarChangeListener(sliders)
         dementorCount.setOnSeekBarChangeListener(sliders)
 
-        pickImageButton.setOnClickListener { pickImage() }
-        findViewById<Button>(R.id.pick_map).setOnClickListener { pickMapFile() }
         findViewById<Button>(R.id.set_wallpaper).setOnClickListener { openWallpaperPicker() }
     }
 
     override fun onDestroy() {
         worker.shutdown()
         super.onDestroy()
-    }
-
-    @Deprecated("Activity без AndroidX получает результат выбора только так")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        val uri = data?.data.takeIf { resultCode == RESULT_OK }
-        when {
-            requestCode != REQUEST_PICK_IMAGE && requestCode != REQUEST_MAP_FILE -> return
-            uri == null -> showSaved() // отмена: возвращаем прежний выбор
-            requestCode == REQUEST_PICK_IMAGE -> importImage(uri)
-            else -> importMap(uri)
-        }
     }
 
     private fun radioButton(tag: Any, title: Int): RadioButton {
@@ -185,12 +150,8 @@ class SettingsActivity : Activity() {
         dementorCount.progress = dementors
         showSliders(intensity, dementors)
 
-        pickImageButton.visibility = if (background == MapBackground.CUSTOM) View.VISIBLE else View.GONE
         mapSection.visibility = if (background.includesMap) View.GONE else View.VISIBLE
-        val name = MapPrefs.customMapName(prefs)
-        customMapName.visibility = if (name == null) View.GONE else View.VISIBLE
-        if (name != null) customMapName.text = getString(R.string.map_custom_file, name)
-        warmMapCache(MapPrefs.visibleMapLayer(prefs), prefs.getLong(MapPrefs.KEY_CUSTOM_STAMP, 0L))
+        warmMapCache(MapPrefs.visibleMapLayer(prefs))
     }
 
     private fun showSliders(intensity: Int, dementors: Int) {
@@ -259,77 +220,13 @@ class SettingsActivity : Activity() {
         }
     }
 
-    private fun pickImage() {
-        val photoPicker = Intent(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) MediaStore.ACTION_PICK_IMAGES
-            else Intent.ACTION_OPEN_DOCUMENT,
-        ).setType("image/*")
-        val fallback = Intent(Intent.ACTION_GET_CONTENT).setType("image/*")
-        startPicker(listOf(photoPicker, fallback), REQUEST_PICK_IMAGE, R.string.no_image_picker)
-    }
-
-    private fun pickMapFile() {
-        val document = Intent(Intent.ACTION_OPEN_DOCUMENT)
-            .addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("*/*")
-            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/svg+xml", "image/png"))
-        startPicker(listOf(document), REQUEST_MAP_FILE, R.string.map_import_failed)
-    }
-
-    private fun startPicker(intents: List<Intent>, requestCode: Int, notFound: Int) {
-        for (intent in intents) {
-            try {
-                @Suppress("DEPRECATION")
-                startActivityForResult(intent, requestCode)
-                return
-            } catch (e: ActivityNotFoundException) {
-                // пробуем следующий способ
-            }
-        }
-        Toast.makeText(this, notFound, Toast.LENGTH_LONG).show()
-        showSaved()
-    }
-
-    private fun importImage(uri: Uri) {
-        pickImageButton.isEnabled = false
-        worker.execute {
-            val ok = CustomBackground.import(applicationContext, uri)
-            mainHandler.post {
-                if (isDestroyed) return@post
-                pickImageButton.isEnabled = true
-                if (ok) {
-                    MapPrefs.setCustomBackground(this)
-                } else {
-                    Toast.makeText(this, R.string.image_import_failed, Toast.LENGTH_LONG).show()
-                }
-                showSaved()
-            }
-        }
-    }
-
-    private fun importMap(uri: Uri) {
-        worker.execute {
-            val ok = MapLayers.importCustom(applicationContext, uri)
-            mainHandler.post {
-                if (isDestroyed) return@post
-                if (ok) {
-                    MapPrefs.setMapLayer(this, MapLayer.CUSTOM)
-                } else {
-                    Toast.makeText(this, R.string.map_import_failed, Toast.LENGTH_LONG).show()
-                }
-                showSaved()
-            }
-        }
-    }
-
     /**
      * Заранее готовит карту под полный экран в кэше на диске, чтобы обои показали её
      * с первого кадра, а не после разбора SVG. Готовит в фоне, один раз на каждую выбранную карту.
      */
-    private fun warmMapCache(layer: MapLayer, stamp: Long) {
-        if (layer == MapLayer.NONE || (layer == warmedLayer && stamp == warmedStamp)) return
+    private fun warmMapCache(layer: MapLayer) {
+        if (layer == MapLayer.NONE || layer == warmedLayer) return
         warmedLayer = layer
-        warmedStamp = stamp
         val real = DisplayMetrics()
         @Suppress("DEPRECATION")
         windowManager.defaultDisplay.getRealMetrics(real)
@@ -337,7 +234,7 @@ class SettingsActivity : Activity() {
         val height = maxOf(real.widthPixels, real.heightPixels)
         worker.execute {
             try {
-                MapLayers.raster(this, layer, stamp, width, height)
+                MapLayers.raster(this, layer, width, height)
             } catch (e: Exception) {
                 Log.w(TAG, "Cannot prepare map layer $layer", e)
             } catch (e: OutOfMemoryError) {
@@ -363,8 +260,6 @@ class SettingsActivity : Activity() {
     }
 
     private companion object {
-        const val REQUEST_PICK_IMAGE = 1
-        const val REQUEST_MAP_FILE = 2
         const val TAG = "MapSettings"
     }
 }

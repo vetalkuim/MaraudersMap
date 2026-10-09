@@ -157,15 +157,9 @@ class MapRenderer(private val context: Context) {
     }
 
     private fun bitmapFor(bg: MapBackground): Bitmap = bitmaps.getOrPut(bg) {
-        val custom = if (bg == MapBackground.CUSTOM) CustomBackground.load(context) else null
-        custom ?: BitmapFactory.decodeResource(context.resources, bg.drawable, BitmapFactory.Options().apply {
+        BitmapFactory.decodeResource(context.resources, bg.drawable, BitmapFactory.Options().apply {
             inScaled = false
         })
-    }
-
-    /** Сбрасывает закэшированную свою картинку, чтобы при следующей отрисовке прочитать новую. */
-    fun invalidateCustom() {
-        bitmaps.remove(MapBackground.CUSTOM)?.recycle()
     }
 
     private fun releaseUnused() {

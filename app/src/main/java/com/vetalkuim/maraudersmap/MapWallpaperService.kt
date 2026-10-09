@@ -109,11 +109,7 @@ class MapWallpaperService : WallpaperService() {
                     loadMap() // фон с картой убирает слой 1, другой фон возвращает
                     drawFrame()
                 }
-                MapPrefs.KEY_CUSTOM_VERSION -> {
-                    renderer.invalidateCustom()
-                    drawFrame()
-                }
-                MapPrefs.KEY_MAP_LAYER, MapPrefs.KEY_CUSTOM_STAMP -> loadMap()
+                MapPrefs.KEY_MAP_LAYER -> loadMap()
                 // Новые приходят с краёв, лишние уходят за край — никто не исчезает на месте.
                 MapPrefs.KEY_TRAVELER_NAMES, MapPrefs.KEY_DEMENTORS -> {
                     creatures.travelerNames = MapPrefs.travelerNames(sharedPreferences)
@@ -135,7 +131,6 @@ class MapWallpaperService : WallpaperService() {
         private fun loadMap() {
             val generation = ++mapGeneration
             val layer = MapPrefs.visibleMapLayer(prefs)
-            val stamp = prefs.getLong(MapPrefs.KEY_CUSTOM_STAMP, 0L)
             if (layer == MapLayer.NONE) {
                 renderer.mapRaster = null
                 if (visible) drawFrame()
@@ -145,10 +140,10 @@ class MapWallpaperService : WallpaperService() {
             val height = surfaceHeight
             if (width <= 0 || height <= 0) {
                 // Размер ещё неизвестен — заранее разбираем SVG, растеризация будет после onSurfaceChanged.
-                loader.execute { loadImage(layer, stamp) }
+                loader.execute { loadImage(layer) }
                 return
             }
-            val cached = MapLayers.cachedRaster(this@MapWallpaperService, layer, stamp, width, height)
+            val cached = MapLayers.cachedRaster(this@MapWallpaperService, layer, width, height)
             if (cached != null) {
                 renderer.mapRaster = cached
                 if (visible) drawFrame()
@@ -157,7 +152,7 @@ class MapWallpaperService : WallpaperService() {
             loader.execute {
                 if (generation != mapGeneration) return@execute
                 val raster = try {
-                    MapLayers.raster(this@MapWallpaperService, layer, stamp, width, height)
+                    MapLayers.raster(this@MapWallpaperService, layer, width, height)
                 } catch (e: Exception) {
                     Log.w(TAG, "Cannot load map layer $layer", e)
                     null
@@ -173,9 +168,9 @@ class MapWallpaperService : WallpaperService() {
             }
         }
 
-        private fun loadImage(layer: MapLayer, stamp: Long) {
+        private fun loadImage(layer: MapLayer) {
             try {
-                MapLayers.image(this@MapWallpaperService, layer, stamp)
+                MapLayers.image(this@MapWallpaperService, layer)
             } catch (e: Exception) {
                 Log.w(TAG, "Cannot load map layer $layer", e)
             } catch (e: OutOfMemoryError) {
