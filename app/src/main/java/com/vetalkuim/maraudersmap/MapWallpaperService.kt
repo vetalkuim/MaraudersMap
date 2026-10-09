@@ -59,7 +59,6 @@ class MapWallpaperService : WallpaperService() {
             this.visible = visible
             lastFrameAt = 0L
             if (visible) {
-                renderer.restartUnfold()
                 drawFrame()
             } else {
                 handler.removeCallbacks(drawRunnable)
@@ -107,7 +106,6 @@ class MapWallpaperService : WallpaperService() {
             when (key) {
                 MapPrefs.KEY_BACKGROUND -> {
                     renderer.background = MapPrefs.background(sharedPreferences)
-                    renderer.restartUnfold()
                     drawFrame()
                 }
                 MapPrefs.KEY_CUSTOM_VERSION -> {
@@ -187,13 +185,10 @@ class MapWallpaperService : WallpaperService() {
         private fun drawFrame() {
             handler.removeCallbacks(drawRunnable)
             val now = SystemClock.uptimeMillis()
-            // Пока лист разворачивается, путники ждут.
-            if (!renderer.isUnfolding) {
-                creatures.update(if (lastFrameAt == 0L) 0f else (now - lastFrameAt) / 1000f)
-            }
+            creatures.update(if (lastFrameAt == 0L) 0f else (now - lastFrameAt) / 1000f)
             lastFrameAt = now
             val holder = surfaceHolder
-            // Аппаратный канвас заметно быстрее масштабирует пергамент во время анимации.
+            // Аппаратный канвас заметно быстрее рисует пергамент и карту.
             val canvas = try {
                 holder.lockHardwareCanvas()
             } catch (e: IllegalStateException) {
@@ -205,17 +200,12 @@ class MapWallpaperService : WallpaperService() {
                 holder.unlockCanvasAndPost(canvas)
             }
             if (!visible) return
-            when {
-                renderer.isAnimating -> handler.postDelayed(drawRunnable, FRAME_DELAY_MS)
-                !creatures.isIdle -> handler.postDelayed(drawRunnable, CREATURE_FRAME_DELAY_MS)
-            }
+            if (!creatures.isIdle) handler.postDelayed(drawRunnable, CREATURE_FRAME_DELAY_MS)
         }
     }
 
     private companion object {
-        const val FRAME_DELAY_MS = 16L
-
-        /** Путникам и следам хватает ~30 кадров в секунду — вдвое реже, чем раскрытию листа. */
+        /** Путникам и следам хватает ~30 кадров в секунду. */
         const val CREATURE_FRAME_DELAY_MS = 33L
         const val SCROLL_SETTLE_MS = 300L
         const val TAG = "MapWallpaper"

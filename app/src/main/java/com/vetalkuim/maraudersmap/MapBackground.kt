@@ -7,20 +7,17 @@ import org.json.JSONException
 
 /**
  * Фоновые варианты. [CUSTOM] — картинка пользователя ([CustomBackground]), [drawable] у неё —
- * запасной фон, пока картинка не выбрана. [UNFOLD] — анимация раскрытия по кадрам пергамента.
+ * запасной фон, пока картинка не выбрана.
  */
 enum class MapBackground(val drawable: Int, val title: Int) {
     FOLD_WIDE(R.drawable.bg_fold_wide, R.string.bg_fold_wide),
     FOLD_THIN(R.drawable.bg_fold_thin, R.string.bg_fold_thin),
     PLAIN(R.drawable.bg_plain, R.string.bg_plain),
-    CUSTOM(R.drawable.bg_plain, R.string.bg_custom),
-    UNFOLD(R.drawable.bg_plain, R.string.bg_unfold);
+    CUSTOM(R.drawable.bg_plain, R.string.bg_custom);
 
     companion object {
-        /** Кадры анимации раскрытия: широкий сгиб → тонкий сгиб → ровный лист. */
-        val unfoldFrames = listOf(FOLD_WIDE, FOLD_THIN, PLAIN)
-
-        val DEFAULT = UNFOLD
+        /** По умолчанию — ровный пергамент; сохранённый прежний режим раскрытия тоже становится им. */
+        val DEFAULT = PLAIN
     }
 }
 

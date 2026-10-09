@@ -36,7 +36,8 @@ class TravelerTest {
     @Test
     fun `имена по умолчанию и без повторов`() {
         val world = world(3)
-        assertEquals(listOf("Путник", "Странница", "Бродяга"), world.travelers.map { it.name })
+        assertEquals(listOf("Сохатый", "Бродяга", "Лунатик"), world.travelers.map { it.name })
+        assertEquals(listOf("Сохатый", "Бродяга", "Лунатик", "Хвост"), MapCreatures(dp).travelerNames)
         repeat(30 * 300) {
             world.update(FRAME)
             val names = world.travelers.map { it.name }

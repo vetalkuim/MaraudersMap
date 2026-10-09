@@ -59,7 +59,8 @@ class DementorSprites(private val context: Context) {
 
     /**
      * Лицо на рисунке — тёмно-серое (около 38 из 255) пятно внутри чёрного капюшона.
-     * Маска берёт его пиксели в чуть расширенном овале лица, с мягким краем; цвет лица — их средний цвет.
+     * Маска берёт его пиксели в чуть расширенном овале лица, с мягким краем; цвет лица — их средний цвет,
+     * осветлённый на [FACE_LIGHTEN].
      * На самой картинке лицо закрашивается цветом капюшона вокруг него.
      */
     private fun faceMask(variant: DementorVariant, bitmap: Bitmap): Sprite {
@@ -107,11 +108,12 @@ class DementorSprites(private val context: Context) {
                 hoodCount++
             }
         }
-        val faceColor = if (faceSum > 0f) {
+        val drawn = if (faceSum > 0f) {
             Color.rgb((faceR / faceSum).roundToInt(), (faceG / faceSum).roundToInt(), (faceB / faceSum).roundToInt())
         } else {
             DEFAULT_FACE
         }
+        val faceColor = lighten(drawn, FACE_LIGHTEN)
         val hood = if (hoodCount > 0) {
             Color.rgb((hoodR / hoodCount).roundToInt(), (hoodG / hoodCount).roundToInt(), (hoodB / hoodCount).roundToInt())
         } else {
@@ -144,6 +146,15 @@ class DementorSprites(private val context: Context) {
 
         /** Цвет лица, если на рисунке его не нашлось. */
         val DEFAULT_FACE = Color.rgb(38, 38, 38)
+
+        /** Лицо светлее, чем на рисунке: смешано с белым на эту долю (тёмно-серое 35 → серое ~123). */
+        const val FACE_LIGHTEN = 0.4f
+
+        fun lighten(color: Int, amount: Float): Int = Color.rgb(
+            (Color.red(color) + (255 - Color.red(color)) * amount).roundToInt(),
+            (Color.green(color) + (255 - Color.green(color)) * amount).roundToInt(),
+            (Color.blue(color) + (255 - Color.blue(color)) * amount).roundToInt(),
+        )
 
         fun drawableFor(variant: DementorVariant): Int = when (variant.number) {
             1 -> R.drawable.dementor_1

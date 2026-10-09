@@ -14,28 +14,6 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:fontFamily="serif"
-            android:gravity="center"
-            android:text="@string/oath"
-            android:textColor="@color/parchment"
-            android:textSize="18sp"
-            android:textStyle="italic" />
-
-        <ImageView
-            android:id="@+id/preview"
-            android:layout_width="wrap_content"
-            android:layout_height="320dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="24dp"
-            android:adjustViewBounds="true"
-            android:contentDescription="@string/preview_description"
-            android:scaleType="fitCenter" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
             android:fontFamily="serif"
             android:text="@string/background_title"
             android:textColor="@color/parchment"
