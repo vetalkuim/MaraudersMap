@@ -38,6 +38,7 @@ class MapInscriptions(
     private val namesPaint = inkPaint(namesTypeface)
     private val presentPaint = inkPaint(scriptTypeface)
     private val titlePaint = inkPaint(titleTypeface)
+    private val paints = listOf(messrsPaint, namesPaint, presentPaint, titlePaint)
     private val capBounds = Rect()
 
     private var width = 0f
@@ -221,7 +222,19 @@ class MapInscriptions(
         return out
     }
 
-    fun draw(canvas: Canvas) {
+    /**
+     * Рисует оба блока. [intensity] — интенсивность цвета в процентах, как у карты: до 100 — бледнее,
+     * выше 100 — надписи накладываются второй раз и чернила гуще.
+     */
+    fun draw(canvas: Canvas, intensity: Int = 100) {
+        val strength = INK_ALPHA * intensity / 100
+        if (strength <= 0) return
+        drawPass(canvas, strength.coerceAtMost(INK_ALPHA))
+        if (strength > INK_ALPHA) drawPass(canvas, (strength - INK_ALPHA).coerceAtMost(INK_ALPHA))
+    }
+
+    private fun drawPass(canvas: Canvas, alpha: Int) {
+        for (paint in paints) paint.alpha = alpha
         drawBlock(canvas, dedicationLines, dedicationTop)
         drawBlock(canvas, titleLines, titleTop)
     }

@@ -100,6 +100,7 @@ class SettingsActivity : Activity() {
         mapIntensity.setOnSeekBarChangeListener(sliders)
         dementorCount.setOnSeekBarChangeListener(sliders)
 
+        setupDrawing()
         setupInscriptions()
 
         findViewById<Button>(R.id.set_wallpaper).setOnClickListener { openWallpaperPicker() }
@@ -123,6 +124,28 @@ class SettingsActivity : Activity() {
     private fun showSliders(intensity: Int, dementors: Int) {
         mapIntensityLabel.text = getString(R.string.map_intensity, intensity)
         dementorLabel.text = getString(R.string.dementor_count, dementors)
+    }
+
+    /** Рисунок слоя 1 — карта Хогвартса или надписи; настройки надписей видны только для надписей. */
+    private fun setupDrawing() {
+        val group = findViewById<RadioGroup>(R.id.drawing)
+        val inscriptionSettings = findViewById<View>(R.id.inscription_settings)
+        fun show(drawing: Drawing) {
+            inscriptionSettings.visibility = if (drawing == Drawing.INSCRIPTIONS) View.VISIBLE else View.GONE
+        }
+        val current = MapPrefs.drawing(MapPrefs.get(this))
+        group.check(
+            when (current) {
+                Drawing.HOGWARTS -> R.id.drawing_hogwarts
+                Drawing.INSCRIPTIONS -> R.id.drawing_inscriptions
+            },
+        )
+        show(current)
+        group.setOnCheckedChangeListener { _, id ->
+            val drawing = if (id == R.id.drawing_inscriptions) Drawing.INSCRIPTIONS else Drawing.HOGWARTS
+            MapPrefs.setDrawing(this, drawing)
+            show(drawing)
+        }
     }
 
     /** Где стоят надписи и сколько в них строк; если обе в одном месте, название сверху. */

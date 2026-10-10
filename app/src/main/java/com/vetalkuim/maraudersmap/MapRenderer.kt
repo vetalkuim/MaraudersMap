@@ -17,7 +17,8 @@ import android.os.Build
  * Рисует обои по слоям:
  * 0 — пергамент ([drawBackground]), растянутый по принципу center-crop без искажений:
  *     ровный ([Background.PLAIN]) или с пятнами и пылинками ([Background.DUST]);
- * 1 — нарисованная карта ([drawMap]), вписанная в экран целиком, и надписи над ней ([inscriptions]);
+ * 1 — рисунок: карта Хогвартса ([drawMap]), вписанная в экран целиком ([Drawing.HOGWARTS]),
+ *     или надписи ([inscriptions], [Drawing.INSCRIPTIONS]);
  * 2 — путники со следами и подписями ([drawCreatures]).
  */
 class MapRenderer(private val context: Context) {
@@ -61,6 +62,18 @@ class MapRenderer(private val context: Context) {
     }
     private var mapCache: Bitmap? = null
 
+    /** Вариант рисунка: карта или надписи — рисуется что-то одно. */
+    var drawing: Drawing = MapPrefs.DEFAULT_DRAWING
+        set(value) {
+            if (field == value) return
+            field = value
+            if (value != Drawing.HOGWARTS) {
+                mapRaster = null
+                mapCache?.recycle()
+                mapCache = null
+            }
+        }
+
     /**
      * По чему посчитана сетка путников: картинка карты и раскладка надписей;
      * пересчёт — только когда что-то из этого изменилось.
@@ -98,8 +111,8 @@ class MapRenderer(private val context: Context) {
     var mapRaster: Bitmap? = null
 
     /**
-     * Интенсивность цвета карты в процентах: до 100 — чернила бледнее,
-     * выше 100 — карта накладывается второй раз и чернила гуще.
+     * Интенсивность цвета рисунка (карты или надписей) в процентах: до 100 — чернила бледнее,
+     * выше 100 — рисунок накладывается второй раз и чернила гуще.
      */
     var mapIntensity: Int = MapPrefs.DEFAULT_MAP_INTENSITY
 
@@ -120,37 +133,55 @@ class MapRenderer(private val context: Context) {
     fun draw(canvas: Canvas) {
         canvas.drawColor(Color.BLACK)
         drawBackground(canvas)
-        drawMap(canvas)
-        inscriptions.resize(canvas.width, canvas.height)
-        inscriptions.draw(canvas)
+        when (drawing) {
+            Drawing.HOGWARTS -> drawMap(canvas)
+            Drawing.INSCRIPTIONS -> {
+                inscriptions.resize(canvas.width, canvas.height)
+                inscriptions.draw(canvas, mapIntensity)
+            }
+        }
         updateWalkArea(canvas.width, canvas.height)
         drawCreatures(canvas)
     }
 
     /**
-     * Путники ходят только по чистой бумаге — там, где нет рисунка карты и надписей.
-     * Без карты (или с невидимой) — везде, кроме надписей.
+     * Путники ходят только по чистой бумаге — там, где нет рисунка карты или надписей.
+     * С невидимым рисунком (интенсивность 0 %) — по всему экрану.
      */
     fun updateWalkArea(width: Int, height: Int) {
         val world = creatures ?: return
         if (width <= 0 || height <= 0) return
-        inscriptions.resize(width, height)
-        val mapVisible = (mapRaster != null || mapImage != null) && mapIntensity > 0
+        val visible = mapIntensity > 0
+        val mapVisible = visible && drawing == Drawing.HOGWARTS && (mapRaster != null || mapImage != null)
+        val withInscriptions = visible && drawing == Drawing.INSCRIPTIONS
+        if (!mapVisible && !withInscriptions) {
+            if (world.walkArea != null) world.walkArea = null
+            walkAreaSource = null
+            walkAreaInscriptions = NO_INSCRIPTIONS
+            walkAreaResult = null
+            return
+        }
         val bitmap = if (mapVisible) (mapBitmap(width, height) ?: return) else null
-        if (bitmap === walkAreaSource && inscriptions.version == walkAreaInscriptions &&
+        val inscriptionsKey = if (withInscriptions) {
+            inscriptions.resize(width, height)
+            inscriptions.version
+        } else {
+            NO_INSCRIPTIONS
+        }
+        if (bitmap === walkAreaSource && inscriptionsKey == walkAreaInscriptions &&
             world.walkArea === walkAreaResult
         ) return
-        world.walkArea = walkAreaOf(bitmap, width, height, world.dp)
+        world.walkArea = walkAreaOf(bitmap, withInscriptions, width, height, world.dp)
         walkAreaSource = bitmap
-        walkAreaInscriptions = inscriptions.version
+        walkAreaInscriptions = inscriptionsKey
         walkAreaResult = world.walkArea
     }
 
     /**
      * Сетка чернил: клетка занята, если в ней есть хоть одна тёмная точка рисунка [map]
-     * или она лежит под надписью.
+     * или она лежит под надписью (если [withInscriptions]).
      */
-    private fun walkAreaOf(map: Bitmap?, width: Int, height: Int, dp: Float): WalkArea {
+    private fun walkAreaOf(map: Bitmap?, withInscriptions: Boolean, width: Int, height: Int, dp: Float): WalkArea {
         val cell = WalkArea.CELL_DP * dp
         val (cols, rows) = WalkArea.gridSize(width.toFloat(), height.toFloat(), cell)
         val ink = BooleanArray(cols * rows)
@@ -165,7 +196,7 @@ class MapRenderer(private val context: Context) {
                 }
             }
         }
-        for (r in inscriptions.bounds()) {
+        if (withInscriptions) for (r in inscriptions.bounds()) {
             val left = (r.left / cell).toInt().coerceIn(0, cols - 1)
             val right = (r.right / cell).toInt().coerceIn(0, cols - 1)
             val top = (r.top / cell).toInt().coerceIn(0, rows - 1)
@@ -259,6 +290,9 @@ class MapRenderer(private val context: Context) {
             return bitmap
         }
 
+
+        /** Ключ раскладки надписей, когда надписи не рисуются. */
+        private const val NO_INSCRIPTIONS = -1
 
         /** Пылинки не прыгают после долгого кадра: шаг не больше 0,1 с. */
         private const val MAX_DUST_STEP_S = 0.1f

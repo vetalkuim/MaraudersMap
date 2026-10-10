@@ -44,6 +44,7 @@ class MapWallpaperService : WallpaperService() {
             super.onCreate(surfaceHolder)
             renderer.creatures = creatures
             renderer.background = MapPrefs.background(prefs)
+            renderer.drawing = MapPrefs.drawing(prefs)
             applyInscriptions(prefs)
             renderer.mapIntensity = MapPrefs.mapIntensity(prefs)
             creatures.travelerNames = MapPrefs.travelerNames(prefs)
@@ -124,6 +125,12 @@ class MapWallpaperService : WallpaperService() {
                     loadBackground()
                     if (visible) drawFrame()
                 }
+                MapPrefs.KEY_DRAWING -> {
+                    renderer.drawing = MapPrefs.drawing(sharedPreferences)
+                    // Карта нужна только своему варианту: иначе её загрузка отменяется, а картинка освобождена.
+                    if (renderer.drawing == Drawing.HOGWARTS) loadMap() else mapGeneration++
+                    if (visible) drawFrame()
+                }
                 MapPrefs.KEY_DEDICATION_POSITION, MapPrefs.KEY_TITLE_POSITION,
                 MapPrefs.KEY_DEDICATION_LINES, MapPrefs.KEY_TITLE_LINES -> {
                     applyInscriptions(sharedPreferences)
@@ -153,6 +160,7 @@ class MapWallpaperService : WallpaperService() {
          */
         private fun loadMap() {
             val generation = ++mapGeneration
+            if (renderer.drawing != Drawing.HOGWARTS) return
             val width = surfaceWidth
             val height = surfaceHeight
             if (width <= 0 || height <= 0) {
@@ -178,7 +186,7 @@ class MapWallpaperService : WallpaperService() {
                     null
                 }
                 handler.post {
-                    if (generation != mapGeneration) return@post
+                    if (generation != mapGeneration || renderer.drawing != Drawing.HOGWARTS) return@post
                     renderer.mapRaster = raster
                     if (visible) drawFrame()
                 }
