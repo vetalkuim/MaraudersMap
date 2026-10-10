@@ -26,19 +26,19 @@
             android:orientation="vertical">
 
             <RadioButton
-                android:id="@+id/parchment_static"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:buttonTint="@color/parchment"
-                android:text="@string/parchment_static"
-                android:textColor="@color/parchment" />
-
-            <RadioButton
                 android:id="@+id/parchment_dynamic"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:buttonTint="@color/parchment"
                 android:text="@string/parchment_dynamic"
+                android:textColor="@color/parchment" />
+
+            <RadioButton
+                android:id="@+id/parchment_static"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:buttonTint="@color/parchment"
+                android:text="@string/parchment_static"
                 android:textColor="@color/parchment" />
         </RadioGroup>
 
