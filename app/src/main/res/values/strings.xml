@@ -13,11 +13,11 @@
     <string name="lines_two">2 строки</string>
     <string name="lines_three">3 строки</string>
     <string name="creatures_title">Обитатели карты</string>
-    <string name="background_title">Фон</string>
-    <string name="background_plain">Ровный пергамент</string>
-    <string name="background_dust">Пергамент с пылинками</string>
+    <string name="parchment_title">Пергамент</string>
+    <string name="parchment_static">Статический</string>
+    <string name="parchment_dynamic">Динамический</string>
     <string name="drawing_title">Рисунок</string>
-    <string name="drawing_hogwarts">Hogwarts</string>
+    <string name="drawing_map">Карта</string>
     <string name="drawing_inscriptions">Надписи</string>
     <string name="map_intensity">Интенсивность цвета рисунка: %1$d%%</string>
     <string name="travelers_title">Путники</string>

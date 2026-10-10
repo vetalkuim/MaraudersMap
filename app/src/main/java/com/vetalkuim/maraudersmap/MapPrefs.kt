@@ -5,19 +5,19 @@ import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONException
 
-/** Вариант фона (слой 0). */
+/** Вариант пергамента (слой 0). */
 enum class Background {
-    /** Ровный пергамент из картинки `bg_plain.webp`. */
-    PLAIN,
+    /** Статический: ровный пергамент из картинки `bg_plain.webp`. */
+    STATIC,
 
-    /** Процедурный пергамент с пятнами, зерном и виньеткой, над ним — пылинки. */
-    DUST,
+    /** Динамический: процедурный пергамент с пятнами, зерном и виньеткой, над ним — пылинки. */
+    DYNAMIC,
 }
 
 /** Вариант рисунка (слой 1). */
 enum class Drawing {
-    /** Карта Хогвартса из `map_hogwarts.svg`. */
-    HOGWARTS,
+    /** Карта: рисунок из `map_hogwarts.svg`. */
+    MAP,
 
     /** Надписи: название «The Marauder's Map» и посвящение. */
     INSCRIPTIONS,
@@ -40,11 +40,11 @@ object MapPrefs {
 
     /** Вариант фона — имя из [Background]. */
     const val KEY_BACKGROUND = "background"
-    val DEFAULT_BACKGROUND = Background.PLAIN
+    val DEFAULT_BACKGROUND = Background.STATIC
 
     /** Вариант рисунка — имя из [Drawing]. */
     const val KEY_DRAWING = "drawing"
-    val DEFAULT_DRAWING = Drawing.HOGWARTS
+    val DEFAULT_DRAWING = Drawing.MAP
 
     /** Надписи: где стоят посвящение и название — имя из [InscriptionPosition], и сколько в них строк. */
     const val KEY_DEDICATION_POSITION = "dedication_position"

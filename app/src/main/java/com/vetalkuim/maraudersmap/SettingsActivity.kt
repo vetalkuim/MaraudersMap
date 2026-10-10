@@ -69,15 +69,15 @@ class SettingsActivity : Activity() {
         showSaved()
         warmMapCache()
 
-        val background = findViewById<RadioGroup>(R.id.background)
+        val background = findViewById<RadioGroup>(R.id.parchment)
         background.check(
             when (MapPrefs.background(MapPrefs.get(this))) {
-                Background.PLAIN -> R.id.background_plain
-                Background.DUST -> R.id.background_dust
+                Background.STATIC -> R.id.parchment_static
+                Background.DYNAMIC -> R.id.parchment_dynamic
             },
         )
         background.setOnCheckedChangeListener { _, id ->
-            MapPrefs.setBackground(this, if (id == R.id.background_dust) Background.DUST else Background.PLAIN)
+            MapPrefs.setBackground(this, if (id == R.id.parchment_dynamic) Background.DYNAMIC else Background.STATIC)
         }
 
         val sliders = object : SeekBar.OnSeekBarChangeListener {
@@ -126,7 +126,7 @@ class SettingsActivity : Activity() {
         dementorLabel.text = getString(R.string.dementor_count, dementors)
     }
 
-    /** Рисунок слоя 1 — карта Хогвартса или надписи; настройки надписей видны только для надписей. */
+    /** Рисунок слоя 1 — карта или надписи; настройки надписей видны только для надписей. */
     private fun setupDrawing() {
         val group = findViewById<RadioGroup>(R.id.drawing)
         val inscriptionSettings = findViewById<View>(R.id.inscription_settings)
@@ -136,13 +136,13 @@ class SettingsActivity : Activity() {
         val current = MapPrefs.drawing(MapPrefs.get(this))
         group.check(
             when (current) {
-                Drawing.HOGWARTS -> R.id.drawing_hogwarts
+                Drawing.MAP -> R.id.drawing_map
                 Drawing.INSCRIPTIONS -> R.id.drawing_inscriptions
             },
         )
         show(current)
         group.setOnCheckedChangeListener { _, id ->
-            val drawing = if (id == R.id.drawing_inscriptions) Drawing.INSCRIPTIONS else Drawing.HOGWARTS
+            val drawing = if (id == R.id.drawing_inscriptions) Drawing.INSCRIPTIONS else Drawing.MAP
             MapPrefs.setDrawing(this, drawing)
             show(drawing)
         }

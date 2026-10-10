@@ -14,31 +14,31 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/background_title"
+            android:text="@string/parchment_title"
             android:textColor="@color/parchment"
             android:textSize="16sp" />
 
         <RadioGroup
-            android:id="@+id/background"
+            android:id="@+id/parchment"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:orientation="vertical">
 
             <RadioButton
-                android:id="@+id/background_plain"
+                android:id="@+id/parchment_static"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:buttonTint="@color/parchment"
-                android:text="@string/background_plain"
+                android:text="@string/parchment_static"
                 android:textColor="@color/parchment" />
 
             <RadioButton
-                android:id="@+id/background_dust"
+                android:id="@+id/parchment_dynamic"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:buttonTint="@color/parchment"
-                android:text="@string/background_dust"
+                android:text="@string/parchment_dynamic"
                 android:textColor="@color/parchment" />
         </RadioGroup>
 
@@ -58,11 +58,11 @@
             android:orientation="vertical">
 
             <RadioButton
-                android:id="@+id/drawing_hogwarts"
+                android:id="@+id/drawing_map"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:buttonTint="@color/parchment"
-                android:text="@string/drawing_hogwarts"
+                android:text="@string/drawing_map"
                 android:textColor="@color/parchment" />
 
             <RadioButton

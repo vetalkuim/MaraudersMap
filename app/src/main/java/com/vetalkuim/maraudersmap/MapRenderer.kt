@@ -16,14 +16,14 @@ import android.os.Build
 /**
  * Рисует обои по слоям:
  * 0 — пергамент ([drawBackground]), растянутый по принципу center-crop без искажений:
- *     ровный ([Background.PLAIN]) или с пятнами и пылинками ([Background.DUST]);
- * 1 — рисунок: карта Хогвартса ([drawMap]), вписанная в экран целиком ([Drawing.HOGWARTS]),
+ *     статический ([Background.STATIC]) или динамический — с пятнами и пылинками ([Background.DYNAMIC]);
+ * 1 — рисунок: карта ([drawMap]), вписанная в экран целиком ([Drawing.MAP]),
  *     или надписи ([inscriptions], [Drawing.INSCRIPTIONS]);
  * 2 — путники со следами и подписями ([drawCreatures]).
  */
 class MapRenderer(private val context: Context) {
 
-    /** Слой 0, вариант 1 — ровный пергамент; загружается при первой отрисовке. */
+    /** Слой 0, вариант 1 — статический пергамент; загружается при первой отрисовке. */
     private var parchment: Bitmap? = null
 
     /** Вариант фона; ненужная картинка другого варианта освобождается. */
@@ -31,7 +31,7 @@ class MapRenderer(private val context: Context) {
         set(value) {
             if (field == value) return
             field = value
-            if (value == Background.DUST) {
+            if (value == Background.DYNAMIC) {
                 parchment?.recycle()
                 parchment = null
             } else {
@@ -67,7 +67,7 @@ class MapRenderer(private val context: Context) {
         set(value) {
             if (field == value) return
             field = value
-            if (value != Drawing.HOGWARTS) {
+            if (value != Drawing.MAP) {
                 mapRaster = null
                 mapCache?.recycle()
                 mapCache = null
@@ -118,7 +118,7 @@ class MapRenderer(private val context: Context) {
 
     /** Фон анимирован (пылинки) — кадры нужны, даже когда на карте никого нет. */
     val isAnimated: Boolean
-        get() = background == Background.DUST
+        get() = background == Background.DYNAMIC
 
     /** Слой 2; null — не рисуется. */
     var creatures: MapCreatures? = null
@@ -127,14 +127,14 @@ class MapRenderer(private val context: Context) {
 
     /** Сдвигает анимацию фона на [dtSeconds] секунд. */
     fun update(dtSeconds: Float) {
-        if (background == Background.DUST) dust.update(dtSeconds.coerceIn(0f, MAX_DUST_STEP_S))
+        if (background == Background.DYNAMIC) dust.update(dtSeconds.coerceIn(0f, MAX_DUST_STEP_S))
     }
 
     fun draw(canvas: Canvas) {
         canvas.drawColor(Color.BLACK)
         drawBackground(canvas)
         when (drawing) {
-            Drawing.HOGWARTS -> drawMap(canvas)
+            Drawing.MAP -> drawMap(canvas)
             Drawing.INSCRIPTIONS -> {
                 inscriptions.resize(canvas.width, canvas.height)
                 inscriptions.draw(canvas, mapIntensity)
@@ -152,7 +152,7 @@ class MapRenderer(private val context: Context) {
         val world = creatures ?: return
         if (width <= 0 || height <= 0) return
         val visible = mapIntensity > 0
-        val mapVisible = visible && drawing == Drawing.HOGWARTS && (mapRaster != null || mapImage != null)
+        val mapVisible = visible && drawing == Drawing.MAP && (mapRaster != null || mapImage != null)
         val withInscriptions = visible && drawing == Drawing.INSCRIPTIONS
         if (!mapVisible && !withInscriptions) {
             if (world.walkArea != null) world.walkArea = null
@@ -241,13 +241,13 @@ class MapRenderer(private val context: Context) {
 
     private fun drawBackground(canvas: Canvas) {
         when (background) {
-            Background.PLAIN -> {
+            Background.STATIC -> {
                 val bitmap = parchment ?: BitmapFactory.decodeResource(
                     context.resources, R.drawable.bg_plain, BitmapFactory.Options().apply { inScaled = false },
                 ).also { parchment = it }
                 drawCropped(canvas, bitmap)
             }
-            Background.DUST -> {
+            Background.DYNAMIC -> {
                 // После поворота, пока новый лист не готов, растягивается прежний.
                 dustParchment?.let { drawCropped(canvas, it) } ?: canvas.drawColor(ParchmentGenerator.BASE_COLOR)
                 dust.resize(canvas.width.toFloat(), canvas.height.toFloat())

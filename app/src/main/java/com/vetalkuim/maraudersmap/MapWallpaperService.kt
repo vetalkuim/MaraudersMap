@@ -128,7 +128,7 @@ class MapWallpaperService : WallpaperService() {
                 MapPrefs.KEY_DRAWING -> {
                     renderer.drawing = MapPrefs.drawing(sharedPreferences)
                     // Карта нужна только своему варианту: иначе её загрузка отменяется, а картинка освобождена.
-                    if (renderer.drawing == Drawing.HOGWARTS) loadMap() else mapGeneration++
+                    if (renderer.drawing == Drawing.MAP) loadMap() else mapGeneration++
                     if (visible) drawFrame()
                 }
                 MapPrefs.KEY_DEDICATION_POSITION, MapPrefs.KEY_TITLE_POSITION,
@@ -160,7 +160,7 @@ class MapWallpaperService : WallpaperService() {
          */
         private fun loadMap() {
             val generation = ++mapGeneration
-            if (renderer.drawing != Drawing.HOGWARTS) return
+            if (renderer.drawing != Drawing.MAP) return
             val width = surfaceWidth
             val height = surfaceHeight
             if (width <= 0 || height <= 0) {
@@ -186,7 +186,7 @@ class MapWallpaperService : WallpaperService() {
                     null
                 }
                 handler.post {
-                    if (generation != mapGeneration || renderer.drawing != Drawing.HOGWARTS) return@post
+                    if (generation != mapGeneration || renderer.drawing != Drawing.MAP) return@post
                     renderer.mapRaster = raster
                     if (visible) drawFrame()
                 }
@@ -201,7 +201,7 @@ class MapWallpaperService : WallpaperService() {
             val generation = ++backgroundGeneration
             val width = surfaceWidth
             val height = surfaceHeight
-            if (renderer.background != Background.DUST || width <= 0 || height <= 0) return
+            if (renderer.background != Background.DYNAMIC || width <= 0 || height <= 0) return
             val current = renderer.dustParchment
             if (current != null && current.width == width && current.height == height) return
             backgroundLoader.execute {
@@ -213,7 +213,7 @@ class MapWallpaperService : WallpaperService() {
                     null
                 } ?: return@execute
                 handler.post {
-                    if (generation != backgroundGeneration || renderer.background != Background.DUST) {
+                    if (generation != backgroundGeneration || renderer.background != Background.DYNAMIC) {
                         bitmap.recycle()
                         return@post
                     }
