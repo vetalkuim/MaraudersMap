@@ -12,9 +12,41 @@
         android:padding="24dp">
 
         <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/background_title"
+            android:textColor="@color/parchment"
+            android:textSize="16sp" />
+
+        <RadioGroup
+            android:id="@+id/background"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/background_plain"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:buttonTint="@color/parchment"
+                android:text="@string/background_plain"
+                android:textColor="@color/parchment" />
+
+            <RadioButton
+                android:id="@+id/background_dust"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:buttonTint="@color/parchment"
+                android:text="@string/background_dust"
+                android:textColor="@color/parchment" />
+        </RadioGroup>
+
+        <TextView
             android:id="@+id/map_intensity_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:textColor="@color/parchment"
             android:textSize="16sp" />
 

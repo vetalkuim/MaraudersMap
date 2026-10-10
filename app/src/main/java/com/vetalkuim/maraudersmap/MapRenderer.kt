@@ -15,14 +15,38 @@ import android.os.Build
 
 /**
  * Рисует обои по слоям:
- * 0 — пергамент ([drawBackground]), растянутый по принципу center-crop без искажений;
+ * 0 — пергамент ([drawBackground]), растянутый по принципу center-crop без искажений:
+ *     ровный ([Background.PLAIN]) или с пятнами и пылинками ([Background.DUST]);
  * 1 — нарисованная карта ([drawMap]), вписанная в экран целиком;
  * 2 — путники со следами и подписями ([drawCreatures]).
  */
 class MapRenderer(private val context: Context) {
 
-    /** Слой 0 — ровный пергамент; загружается при первой отрисовке. */
+    /** Слой 0, вариант 1 — ровный пергамент; загружается при первой отрисовке. */
     private var parchment: Bitmap? = null
+
+    /** Вариант фона; ненужная картинка другого варианта освобождается. */
+    var background: Background = MapPrefs.DEFAULT_BACKGROUND
+        set(value) {
+            if (field == value) return
+            field = value
+            if (value == Background.DUST) {
+                parchment?.recycle()
+                parchment = null
+            } else {
+                dustParchment?.recycle()
+                dustParchment = null
+            }
+        }
+
+    /**
+     * Слой 0, вариант 2 — процедурный пергамент под размер экрана ([ParchmentGenerator]).
+     * Генерируется в фоне; пока его нет — заливка базовым цветом бумаги.
+     */
+    var dustParchment: Bitmap? = null
+
+    /** Пылинки над пергаментом варианта 2. */
+    private val dust by lazy { DustEffect(context.resources.displayMetrics.density) }
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val srcRect = Rect()
     private val dstRect = Rect()
@@ -64,10 +88,19 @@ class MapRenderer(private val context: Context) {
      */
     var mapIntensity: Int = MapPrefs.DEFAULT_MAP_INTENSITY
 
+    /** Фон анимирован (пылинки) — кадры нужны, даже когда на карте никого нет. */
+    val isAnimated: Boolean
+        get() = background == Background.DUST
+
     /** Слой 2; null — не рисуется. */
     var creatures: MapCreatures? = null
 
     private val creatureRenderer by lazy { CreatureRenderer(context) }
+
+    /** Сдвигает анимацию фона на [dtSeconds] секунд. */
+    fun update(dtSeconds: Float) {
+        if (background == Background.DUST) dust.update(dtSeconds.coerceIn(0f, MAX_DUST_STEP_S))
+    }
 
     fun draw(canvas: Canvas) {
         canvas.drawColor(Color.BLACK)
@@ -145,9 +178,23 @@ class MapRenderer(private val context: Context) {
     }
 
     private fun drawBackground(canvas: Canvas) {
-        val bitmap = parchment ?: BitmapFactory.decodeResource(
-            context.resources, R.drawable.bg_plain, BitmapFactory.Options().apply { inScaled = false },
-        ).also { parchment = it }
+        when (background) {
+            Background.PLAIN -> {
+                val bitmap = parchment ?: BitmapFactory.decodeResource(
+                    context.resources, R.drawable.bg_plain, BitmapFactory.Options().apply { inScaled = false },
+                ).also { parchment = it }
+                drawCropped(canvas, bitmap)
+            }
+            Background.DUST -> {
+                // После поворота, пока новый лист не готов, растягивается прежний.
+                dustParchment?.let { drawCropped(canvas, it) } ?: canvas.drawColor(ParchmentGenerator.BASE_COLOR)
+                dust.resize(canvas.width.toFloat(), canvas.height.toFloat())
+                dust.draw(canvas)
+            }
+        }
+    }
+
+    private fun drawCropped(canvas: Canvas, bitmap: Bitmap) {
         centerCrop(bitmap.width, bitmap.height, canvas.width, canvas.height, srcRect)
         dstRect.set(0, 0, canvas.width, canvas.height)
         canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
@@ -156,6 +203,8 @@ class MapRenderer(private val context: Context) {
     fun release() {
         parchment?.recycle()
         parchment = null
+        dustParchment?.recycle()
+        dustParchment = null
         mapImage = null
         mapRaster = null
         creatureRenderer.release()
@@ -179,6 +228,9 @@ class MapRenderer(private val context: Context) {
             return bitmap
         }
 
+
+        /** Пылинки не прыгают после долгого кадра: шаг не больше 0,1 с. */
+        private const val MAX_DUST_STEP_S = 0.1f
 
         /** Поля вокруг карты — доля меньшей стороны экрана. */
         private const val MAP_MARGIN = 0.04f

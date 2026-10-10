@@ -5,6 +5,15 @@ import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONException
 
+/** Вариант фона (слой 0). */
+enum class Background {
+    /** Ровный пергамент из картинки `bg_plain.webp`. */
+    PLAIN,
+
+    /** Процедурный пергамент с пятнами, зерном и виньеткой, над ним — пылинки. */
+    DUST,
+}
+
 object MapPrefs {
     private const val FILE = "map_prefs"
     const val KEY_DEMENTORS = "dementor_count"
@@ -19,6 +28,10 @@ object MapPrefs {
     const val KEY_MAP_INTENSITY = "map_intensity"
     const val DEFAULT_MAP_INTENSITY = 100
     const val MAX_MAP_INTENSITY = 200
+
+    /** Вариант фона — имя из [Background]. */
+    const val KEY_BACKGROUND = "background"
+    val DEFAULT_BACKGROUND = Background.PLAIN
 
     fun get(context: Context): SharedPreferences =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -53,5 +66,14 @@ object MapPrefs {
 
     fun setMapIntensity(context: Context, percent: Int) {
         get(context).edit().putInt(KEY_MAP_INTENSITY, percent).apply()
+    }
+
+    fun background(prefs: SharedPreferences): Background {
+        val name = prefs.getString(KEY_BACKGROUND, null) ?: return DEFAULT_BACKGROUND
+        return Background.entries.firstOrNull { it.name == name } ?: DEFAULT_BACKGROUND
+    }
+
+    fun setBackground(context: Context, background: Background) {
+        get(context).edit().putString(KEY_BACKGROUND, background.name).apply()
     }
 }

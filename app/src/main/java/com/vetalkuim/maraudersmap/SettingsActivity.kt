@@ -18,6 +18,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -65,6 +66,17 @@ class SettingsActivity : Activity() {
 
         showSaved()
         warmMapCache()
+
+        val background = findViewById<RadioGroup>(R.id.background)
+        background.check(
+            when (MapPrefs.background(MapPrefs.get(this))) {
+                Background.PLAIN -> R.id.background_plain
+                Background.DUST -> R.id.background_dust
+            },
+        )
+        background.setOnCheckedChangeListener { _, id ->
+            MapPrefs.setBackground(this, if (id == R.id.background_dust) Background.DUST else Background.PLAIN)
+        }
 
         val sliders = object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {

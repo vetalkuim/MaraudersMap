@@ -4,6 +4,9 @@
     <string name="wallpaper_name">Карта мародёров</string>
     <string name="wallpaper_description">Живые обои: Карта мародёров на старом пергаменте</string>
     <string name="creatures_title">Обитатели карты</string>
+    <string name="background_title">Фон</string>
+    <string name="background_plain">Ровный пергамент</string>
+    <string name="background_dust">Пергамент с пылинками</string>
     <string name="map_intensity">Интенсивность цвета карты: %1$d%%</string>
     <string name="travelers_title">Путники</string>
     <string name="travelers_hint">Путник с пустым именем ходит по карте без подписи</string>
