@@ -7,11 +7,11 @@ import org.json.JSONException
 
 /** Вариант пергамента (слой 0). */
 enum class Background {
-    /** Статический: ровный пергамент из картинки `bg_plain.webp`. */
-    STATIC,
-
     /** Динамический: процедурный пергамент с пятнами, зерном и виньеткой, над ним — пылинки. */
     DYNAMIC,
+
+    /** Статический: ровный пергамент из картинки `bg_plain.webp`. */
+    STATIC,
 }
 
 /** Вариант рисунка (слой 1). */
@@ -40,7 +40,7 @@ object MapPrefs {
 
     /** Вариант фона — имя из [Background]. */
     const val KEY_BACKGROUND = "background"
-    val DEFAULT_BACKGROUND = Background.STATIC
+    val DEFAULT_BACKGROUND = Background.DYNAMIC
 
     /** Вариант рисунка — имя из [Drawing]. */
     const val KEY_DRAWING = "drawing"

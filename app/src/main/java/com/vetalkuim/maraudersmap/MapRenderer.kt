@@ -16,14 +16,14 @@ import android.os.Build
 /**
  * Рисует обои по слоям:
  * 0 — пергамент ([drawBackground]), растянутый по принципу center-crop без искажений:
- *     статический ([Background.STATIC]) или динамический — с пятнами и пылинками ([Background.DYNAMIC]);
+ *     динамический — с пятнами и пылинками ([Background.DYNAMIC]) или статический ([Background.STATIC]);
  * 1 — рисунок: карта ([drawMap]), вписанная в экран целиком ([Drawing.MAP]),
  *     или надписи ([inscriptions], [Drawing.INSCRIPTIONS]);
  * 2 — путники со следами и подписями ([drawCreatures]).
  */
 class MapRenderer(private val context: Context) {
 
-    /** Слой 0, вариант 1 — статический пергамент; загружается при первой отрисовке. */
+    /** Слой 0, вариант 2 — статический пергамент; загружается при первой отрисовке. */
     private var parchment: Bitmap? = null
 
     /** Вариант фона; ненужная картинка другого варианта освобождается. */
@@ -41,8 +41,8 @@ class MapRenderer(private val context: Context) {
         }
 
     /**
-     * Слой 0, вариант 2 — процедурный пергамент под размер экрана ([ParchmentGenerator]).
-     * Генерируется в фоне; пока его нет — заливка базовым цветом бумаги.
+     * Слой 0, вариант 1 — процедурный пергамент под размер экрана ([ParchmentGenerator]).
+     * Генерируется в фоне; если его нет — заливка базовым цветом бумаги.
      */
     var dustParchment: Bitmap? = null
 

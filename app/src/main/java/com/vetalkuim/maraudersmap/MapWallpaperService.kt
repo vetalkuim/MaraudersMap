@@ -1,6 +1,8 @@
 package com.vetalkuim.maraudersmap
 
 import android.content.SharedPreferences
+import android.graphics.Canvas
+import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -32,6 +34,16 @@ class MapWallpaperService : WallpaperService() {
 
         /** Слой 2 живёт, пока жив движок: поворот экрана только меняет его размер. */
         private val creatures = MapCreatures(resources.displayMetrics.density)
+
+        /**
+         * Карта или динамический пергамент под текущий размер ещё готовятся в фоне.
+         * Пока что-то готовится, обои не показываются по частям: экран остаётся тёмным.
+         */
+        private var mapPending = false
+        private var parchmentPending = false
+
+        /** Проявление готовых обоев из темноты: 0 — ещё не видны, 1 — видны целиком. */
+        private var reveal = 0f
 
         /** Время прошлого кадра; 0 — отсчёт начнётся заново, без скачка после паузы. */
         private var lastFrameAt = 0L
@@ -128,7 +140,7 @@ class MapWallpaperService : WallpaperService() {
                 MapPrefs.KEY_DRAWING -> {
                     renderer.drawing = MapPrefs.drawing(sharedPreferences)
                     // Карта нужна только своему варианту: иначе её загрузка отменяется, а картинка освобождена.
-                    if (renderer.drawing == Drawing.MAP) loadMap() else mapGeneration++
+                    if (renderer.drawing == Drawing.MAP) loadMap() else cancelMap()
                     if (visible) drawFrame()
                 }
                 MapPrefs.KEY_DEDICATION_POSITION, MapPrefs.KEY_TITLE_POSITION,
@@ -160,6 +172,7 @@ class MapWallpaperService : WallpaperService() {
          */
         private fun loadMap() {
             val generation = ++mapGeneration
+            mapPending = false
             if (renderer.drawing != Drawing.MAP) return
             val width = surfaceWidth
             val height = surfaceHeight
@@ -174,6 +187,7 @@ class MapWallpaperService : WallpaperService() {
                 if (visible) drawFrame()
                 return
             }
+            mapPending = true
             loader.execute {
                 if (generation != mapGeneration) return@execute
                 val raster = try {
@@ -187,23 +201,32 @@ class MapWallpaperService : WallpaperService() {
                 }
                 handler.post {
                     if (generation != mapGeneration || renderer.drawing != Drawing.MAP) return@post
+                    mapPending = false
                     renderer.mapRaster = raster
                     if (visible) drawFrame()
                 }
             }
         }
 
+        /** Карта не нужна: её загрузка отменяется и больше не задерживает показ обоев. */
+        private fun cancelMap() {
+            mapGeneration++
+            mapPending = false
+        }
+
         /**
-         * Пергамент варианта 2 генерируется под размер экрана в фоне (~100–300 мс);
-         * до этого рисуется заливка базовым цветом бумаги.
+         * Динамический пергамент генерируется под размер экрана в фоне (~100–300 мс);
+         * обои покажутся, когда он будет готов. Если сгенерировать не удалось — заливка цветом бумаги.
          */
         private fun loadBackground() {
             val generation = ++backgroundGeneration
+            parchmentPending = false
             val width = surfaceWidth
             val height = surfaceHeight
             if (renderer.background != Background.DYNAMIC || width <= 0 || height <= 0) return
             val current = renderer.dustParchment
             if (current != null && current.width == width && current.height == height) return
+            parchmentPending = true
             backgroundLoader.execute {
                 if (generation != backgroundGeneration) return@execute
                 val bitmap = try {
@@ -211,13 +234,14 @@ class MapWallpaperService : WallpaperService() {
                 } catch (e: OutOfMemoryError) {
                     Log.w(TAG, "Parchment is too large", e)
                     null
-                } ?: return@execute
+                }
                 handler.post {
                     if (generation != backgroundGeneration || renderer.background != Background.DYNAMIC) {
-                        bitmap.recycle()
+                        bitmap?.recycle()
                         return@post
                     }
-                    renderer.dustParchment = bitmap
+                    parchmentPending = false
+                    if (bitmap != null) renderer.dustParchment = bitmap
                     if (visible) drawFrame()
                 }
             }
@@ -233,13 +257,40 @@ class MapWallpaperService : WallpaperService() {
             }
         }
 
+        /**
+         * Обои не появляются по частям: пока карта или пергамент готовятся, экран тёмный и всё стоит,
+         * а готовый кадр целиком проявляется из темноты за [REVEAL_S]. Готовые части сами вызывают
+         * новый кадр.
+         */
         private fun drawFrame() {
             handler.removeCallbacks(drawRunnable)
+            if (mapPending || parchmentPending) {
+                reveal = 0f
+                lastFrameAt = 0L
+                paint { it.drawColor(Color.BLACK) }
+                return
+            }
             val now = SystemClock.uptimeMillis()
             val dt = if (lastFrameAt == 0L) 0f else (now - lastFrameAt) / 1000f
             creatures.update(dt)
             renderer.update(dt)
             lastFrameAt = now
+            val revealing = reveal < 1f
+            if (revealing) reveal = (reveal + dt / REVEAL_S).coerceAtMost(1f)
+            paint { canvas ->
+                renderer.draw(canvas)
+                if (reveal < 1f) {
+                    val shade = (1f - reveal).let { it * it * (3f - 2f * it) }
+                    canvas.drawColor(Color.argb((255 * shade).toInt(), 0, 0, 0))
+                }
+            }
+            if (!visible) return
+            if (revealing || !creatures.isIdle || renderer.isAnimated) {
+                handler.postDelayed(drawRunnable, CREATURE_FRAME_DELAY_MS)
+            }
+        }
+
+        private inline fun paint(draw: (Canvas) -> Unit) {
             val holder = surfaceHolder
             // Аппаратный канвас заметно быстрее рисует пергамент и карту.
             val canvas = try {
@@ -248,12 +299,10 @@ class MapWallpaperService : WallpaperService() {
                 null
             } ?: holder.lockCanvas() ?: return
             try {
-                renderer.draw(canvas)
+                draw(canvas)
             } finally {
                 holder.unlockCanvasAndPost(canvas)
             }
-            if (!visible) return
-            if (!creatures.isIdle || renderer.isAnimated) handler.postDelayed(drawRunnable, CREATURE_FRAME_DELAY_MS)
         }
     }
 
@@ -261,6 +310,9 @@ class MapWallpaperService : WallpaperService() {
         /** Путникам, следам и пылинкам хватает ~30 кадров в секунду. */
         const val CREATURE_FRAME_DELAY_MS = 33L
         const val SCROLL_SETTLE_MS = 300L
+
+        /** За сколько секунд готовые обои проявляются из темноты. */
+        const val REVEAL_S = 0.5f
         const val TAG = "MapWallpaper"
     }
 }
