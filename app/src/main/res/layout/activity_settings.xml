@@ -63,6 +63,56 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:fontFamily="serif"
+            android:text="@string/inscriptions_title"
+            android:textColor="@color/parchment"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/inscription_title_label"
+            android:textColor="@color/parchment"
+            android:textSize="16sp" />
+
+        <RadioGroup
+            android:id="@+id/title_position"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+
+        <RadioGroup
+            android:id="@+id/title_lines"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/inscription_dedication_label"
+            android:textColor="@color/parchment"
+            android:textSize="16sp" />
+
+        <RadioGroup
+            android:id="@+id/dedication_position"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+
+        <RadioGroup
+            android:id="@+id/dedication_lines"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:fontFamily="serif"
             android:text="@string/creatures_title"
             android:textColor="@color/parchment"
             android:textSize="20sp"

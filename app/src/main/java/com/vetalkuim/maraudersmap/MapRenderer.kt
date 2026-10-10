@@ -17,7 +17,7 @@ import android.os.Build
  * Рисует обои по слоям:
  * 0 — пергамент ([drawBackground]), растянутый по принципу center-crop без искажений:
  *     ровный ([Background.PLAIN]) или с пятнами и пылинками ([Background.DUST]);
- * 1 — нарисованная карта ([drawMap]), вписанная в экран целиком;
+ * 1 — нарисованная карта ([drawMap]), вписанная в экран целиком, и надписи над ней ([inscriptions]);
  * 2 — путники со следами и подписями ([drawCreatures]).
  */
 class MapRenderer(private val context: Context) {
@@ -61,8 +61,23 @@ class MapRenderer(private val context: Context) {
     }
     private var mapCache: Bitmap? = null
 
-    /** Картинка карты, по которой посчитана сетка путников: пересчёт — только при новой. */
+    /**
+     * По чему посчитана сетка путников: картинка карты и раскладка надписей;
+     * пересчёт — только когда что-то из этого изменилось.
+     */
     private var walkAreaSource: Bitmap? = null
+    private var walkAreaInscriptions = -1
+    private var walkAreaResult: WalkArea? = null
+
+    /** Посвящение и название карты; где они стоят и сколько в них строк — задаёт движок. */
+    val inscriptions by lazy {
+        MapInscriptions(
+            context.resources.displayMetrics.density,
+            MapFonts.script(context),
+            MapFonts.names(context),
+            MapFonts.title(context),
+        )
+    }
 
     /**
      * Изображение слоя карты; null — слой выключен или ещё загружается.
@@ -106,41 +121,57 @@ class MapRenderer(private val context: Context) {
         canvas.drawColor(Color.BLACK)
         drawBackground(canvas)
         drawMap(canvas)
+        inscriptions.resize(canvas.width, canvas.height)
+        inscriptions.draw(canvas)
         updateWalkArea(canvas.width, canvas.height)
         drawCreatures(canvas)
     }
 
     /**
-     * Путники ходят только по чистой бумаге — там, где нет рисунка карты.
-     * Без карты (или с невидимой) — по всему экрану.
+     * Путники ходят только по чистой бумаге — там, где нет рисунка карты и надписей.
+     * Без карты (или с невидимой) — везде, кроме надписей.
      */
     fun updateWalkArea(width: Int, height: Int) {
         val world = creatures ?: return
-        if ((mapRaster == null && mapImage == null) || mapIntensity <= 0) {
-            if (world.walkArea != null) world.walkArea = null
-            walkAreaSource = null
-            return
-        }
-        val bitmap = mapBitmap(width, height) ?: return
-        if (bitmap === walkAreaSource && world.walkArea != null) return
-        world.walkArea = walkAreaOf(bitmap, world.dp)
+        if (width <= 0 || height <= 0) return
+        inscriptions.resize(width, height)
+        val mapVisible = (mapRaster != null || mapImage != null) && mapIntensity > 0
+        val bitmap = if (mapVisible) (mapBitmap(width, height) ?: return) else null
+        if (bitmap === walkAreaSource && inscriptions.version == walkAreaInscriptions &&
+            world.walkArea === walkAreaResult
+        ) return
+        world.walkArea = walkAreaOf(bitmap, width, height, world.dp)
         walkAreaSource = bitmap
+        walkAreaInscriptions = inscriptions.version
+        walkAreaResult = world.walkArea
     }
 
-    /** Сетка чернил: клетка занята, если в ней есть хоть одна тёмная точка рисунка. */
-    private fun walkAreaOf(bitmap: Bitmap, dp: Float): WalkArea {
-        val width = bitmap.width
-        val height = bitmap.height
+    /**
+     * Сетка чернил: клетка занята, если в ней есть хоть одна тёмная точка рисунка [map]
+     * или она лежит под надписью.
+     */
+    private fun walkAreaOf(map: Bitmap?, width: Int, height: Int, dp: Float): WalkArea {
         val cell = WalkArea.CELL_DP * dp
         val (cols, rows) = WalkArea.gridSize(width.toFloat(), height.toFloat(), cell)
         val ink = BooleanArray(cols * rows)
-        val line = IntArray(width)
-        val colOf = IntArray(width) { minOf((it / cell).toInt(), cols - 1) }
-        for (y in 0 until height) {
-            bitmap.getPixels(line, 0, width, 0, y, width, 1)
-            val rowStart = minOf((y / cell).toInt(), rows - 1) * cols
-            for (x in 0 until width) {
-                if (isInk(line[x])) ink[rowStart + colOf[x]] = true
+        if (map != null) {
+            val line = IntArray(width)
+            val colOf = IntArray(width) { minOf((it / cell).toInt(), cols - 1) }
+            for (y in 0 until height) {
+                map.getPixels(line, 0, width, 0, y, width, 1)
+                val rowStart = minOf((y / cell).toInt(), rows - 1) * cols
+                for (x in 0 until width) {
+                    if (isInk(line[x])) ink[rowStart + colOf[x]] = true
+                }
+            }
+        }
+        for (r in inscriptions.bounds()) {
+            val left = (r.left / cell).toInt().coerceIn(0, cols - 1)
+            val right = (r.right / cell).toInt().coerceIn(0, cols - 1)
+            val top = (r.top / cell).toInt().coerceIn(0, rows - 1)
+            val bottom = (r.bottom / cell).toInt().coerceIn(0, rows - 1)
+            for (row in top..bottom) {
+                for (col in left..right) ink[row * cols + col] = true
             }
         }
         return WalkArea.fromInk(width.toFloat(), height.toFloat(), cell, dp, ink)

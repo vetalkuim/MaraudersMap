@@ -12,12 +12,14 @@ import android.text.TextWatcher
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
@@ -98,6 +100,8 @@ class SettingsActivity : Activity() {
         mapIntensity.setOnSeekBarChangeListener(sliders)
         dementorCount.setOnSeekBarChangeListener(sliders)
 
+        setupInscriptions()
+
         findViewById<Button>(R.id.set_wallpaper).setOnClickListener { openWallpaperPicker() }
     }
 
@@ -119,6 +123,52 @@ class SettingsActivity : Activity() {
     private fun showSliders(intensity: Int, dementors: Int) {
         mapIntensityLabel.text = getString(R.string.map_intensity, intensity)
         dementorLabel.text = getString(R.string.dementor_count, dementors)
+    }
+
+    /** Где стоят надписи и сколько в них строк; если обе в одном месте, название сверху. */
+    private fun setupInscriptions() {
+        val prefs = MapPrefs.get(this)
+        val positions = InscriptionPosition.entries.map { it to positionLabel(it) }
+        val lines = listOf(1 to R.string.lines_one, 2 to R.string.lines_two, 3 to R.string.lines_three)
+        bindChoice(R.id.title_position, positions, MapPrefs.titlePosition(prefs)) {
+            MapPrefs.setPosition(this, MapPrefs.KEY_TITLE_POSITION, it)
+        }
+        bindChoice(R.id.title_lines, lines, MapPrefs.titleLines(prefs)) {
+            MapPrefs.setLines(this, MapPrefs.KEY_TITLE_LINES, it)
+        }
+        bindChoice(R.id.dedication_position, positions, MapPrefs.dedicationPosition(prefs)) {
+            MapPrefs.setPosition(this, MapPrefs.KEY_DEDICATION_POSITION, it)
+        }
+        bindChoice(R.id.dedication_lines, lines, MapPrefs.dedicationLines(prefs)) {
+            MapPrefs.setLines(this, MapPrefs.KEY_DEDICATION_LINES, it)
+        }
+    }
+
+    private fun positionLabel(position: InscriptionPosition): Int = when (position) {
+        InscriptionPosition.TOP -> R.string.position_top
+        InscriptionPosition.CENTER -> R.string.position_center
+        InscriptionPosition.BOTTOM -> R.string.position_bottom
+    }
+
+    /** Кнопки выбора из [options] (значение и подпись); выбранное сразу сохраняется через [save]. */
+    private fun <T> bindChoice(groupId: Int, options: List<Pair<T, Int>>, current: T, save: (T) -> Unit) {
+        val group = findViewById<RadioGroup>(groupId)
+        for ((value, label) in options) {
+            val button = RadioButton(this).apply {
+                id = View.generateViewId()
+                setText(label)
+                setTextColor(getColor(R.color.parchment))
+                buttonTintList = getColorStateList(R.color.parchment)
+                // Состояние восстанавливается из настроек, а не из сохранённых View.
+                isSaveEnabled = false
+            }
+            group.addView(button, RadioGroup.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            if (value == current) group.check(button.id)
+        }
+        group.setOnCheckedChangeListener { g, checkedId ->
+            val index = g.indexOfChild(g.findViewById<View>(checkedId))
+            if (index >= 0) save(options[index].first)
+        }
     }
 
     /** Строка «имя + Удалить». Позиция строки в [travelerList] совпадает с индексом в [travelerNames]. */

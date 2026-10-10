@@ -33,6 +33,16 @@ object MapPrefs {
     const val KEY_BACKGROUND = "background"
     val DEFAULT_BACKGROUND = Background.PLAIN
 
+    /** Надписи: где стоят посвящение и название — имя из [InscriptionPosition], и сколько в них строк. */
+    const val KEY_DEDICATION_POSITION = "dedication_position"
+    const val KEY_TITLE_POSITION = "title_position"
+    const val KEY_DEDICATION_LINES = "dedication_lines"
+    const val KEY_TITLE_LINES = "title_lines"
+    val DEFAULT_DEDICATION_POSITION = InscriptionPosition.TOP
+    val DEFAULT_TITLE_POSITION = InscriptionPosition.TOP
+    const val DEFAULT_INSCRIPTION_LINES = 1
+    const val MAX_INSCRIPTION_LINES = 3
+
     fun get(context: Context): SharedPreferences =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -75,5 +85,31 @@ object MapPrefs {
 
     fun setBackground(context: Context, background: Background) {
         get(context).edit().putString(KEY_BACKGROUND, background.name).apply()
+    }
+
+    fun dedicationPosition(prefs: SharedPreferences): InscriptionPosition =
+        position(prefs, KEY_DEDICATION_POSITION, DEFAULT_DEDICATION_POSITION)
+
+    fun titlePosition(prefs: SharedPreferences): InscriptionPosition =
+        position(prefs, KEY_TITLE_POSITION, DEFAULT_TITLE_POSITION)
+
+    private fun position(prefs: SharedPreferences, key: String, default: InscriptionPosition): InscriptionPosition {
+        val name = prefs.getString(key, null) ?: return default
+        return InscriptionPosition.entries.firstOrNull { it.name == name } ?: default
+    }
+
+    fun setPosition(context: Context, key: String, position: InscriptionPosition) {
+        get(context).edit().putString(key, position.name).apply()
+    }
+
+    fun dedicationLines(prefs: SharedPreferences): Int = lines(prefs, KEY_DEDICATION_LINES)
+
+    fun titleLines(prefs: SharedPreferences): Int = lines(prefs, KEY_TITLE_LINES)
+
+    private fun lines(prefs: SharedPreferences, key: String): Int =
+        prefs.getInt(key, DEFAULT_INSCRIPTION_LINES).coerceIn(1, MAX_INSCRIPTION_LINES)
+
+    fun setLines(context: Context, key: String, lines: Int) {
+        get(context).edit().putInt(key, lines).apply()
     }
 }

@@ -44,6 +44,7 @@ class MapWallpaperService : WallpaperService() {
             super.onCreate(surfaceHolder)
             renderer.creatures = creatures
             renderer.background = MapPrefs.background(prefs)
+            applyInscriptions(prefs)
             renderer.mapIntensity = MapPrefs.mapIntensity(prefs)
             creatures.travelerNames = MapPrefs.travelerNames(prefs)
             creatures.dementorCount = MapPrefs.dementorCount(prefs)
@@ -123,10 +124,25 @@ class MapWallpaperService : WallpaperService() {
                     loadBackground()
                     if (visible) drawFrame()
                 }
+                MapPrefs.KEY_DEDICATION_POSITION, MapPrefs.KEY_TITLE_POSITION,
+                MapPrefs.KEY_DEDICATION_LINES, MapPrefs.KEY_TITLE_LINES -> {
+                    applyInscriptions(sharedPreferences)
+                    if (visible) drawFrame()
+                }
                 MapPrefs.KEY_MAP_INTENSITY -> {
                     renderer.mapIntensity = MapPrefs.mapIntensity(sharedPreferences)
                     if (visible) drawFrame()
                 }
+            }
+        }
+
+        /** Надписи статичны: после изменения настроек нужен лишь один новый кадр. */
+        private fun applyInscriptions(prefs: SharedPreferences) {
+            renderer.inscriptions.apply {
+                dedicationPosition = MapPrefs.dedicationPosition(prefs)
+                titlePosition = MapPrefs.titlePosition(prefs)
+                dedicationLineCount = MapPrefs.dedicationLines(prefs)
+                titleLineCount = MapPrefs.titleLines(prefs)
             }
         }
 
