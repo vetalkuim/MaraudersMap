@@ -12,12 +12,15 @@ import android.text.TextWatcher
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -66,6 +69,17 @@ class SettingsActivity : Activity() {
         showSaved()
         warmMapCache()
 
+        val background = findViewById<RadioGroup>(R.id.parchment)
+        background.check(
+            when (MapPrefs.background(MapPrefs.get(this))) {
+                Background.STATIC -> R.id.parchment_static
+                Background.DYNAMIC -> R.id.parchment_dynamic
+            },
+        )
+        background.setOnCheckedChangeListener { _, id ->
+            MapPrefs.setBackground(this, if (id == R.id.parchment_dynamic) Background.DYNAMIC else Background.STATIC)
+        }
+
         val sliders = object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                 if (fromUser) showSliders(mapIntensity.progress, dementorCount.progress)
@@ -85,6 +99,9 @@ class SettingsActivity : Activity() {
         }
         mapIntensity.setOnSeekBarChangeListener(sliders)
         dementorCount.setOnSeekBarChangeListener(sliders)
+
+        setupDrawing()
+        setupInscriptions()
 
         findViewById<Button>(R.id.set_wallpaper).setOnClickListener { openWallpaperPicker() }
     }
@@ -107,6 +124,74 @@ class SettingsActivity : Activity() {
     private fun showSliders(intensity: Int, dementors: Int) {
         mapIntensityLabel.text = getString(R.string.map_intensity, intensity)
         dementorLabel.text = getString(R.string.dementor_count, dementors)
+    }
+
+    /** Рисунок слоя 1 — карта или надписи; настройки надписей видны только для надписей. */
+    private fun setupDrawing() {
+        val group = findViewById<RadioGroup>(R.id.drawing)
+        val inscriptionSettings = findViewById<View>(R.id.inscription_settings)
+        fun show(drawing: Drawing) {
+            inscriptionSettings.visibility = if (drawing == Drawing.INSCRIPTIONS) View.VISIBLE else View.GONE
+        }
+        val current = MapPrefs.drawing(MapPrefs.get(this))
+        group.check(
+            when (current) {
+                Drawing.MAP -> R.id.drawing_map
+                Drawing.INSCRIPTIONS -> R.id.drawing_inscriptions
+            },
+        )
+        show(current)
+        group.setOnCheckedChangeListener { _, id ->
+            val drawing = if (id == R.id.drawing_inscriptions) Drawing.INSCRIPTIONS else Drawing.MAP
+            MapPrefs.setDrawing(this, drawing)
+            show(drawing)
+        }
+    }
+
+    /** Где стоят надписи и сколько в них строк; если обе в одном месте, название сверху. */
+    private fun setupInscriptions() {
+        val prefs = MapPrefs.get(this)
+        val positions = InscriptionPosition.entries.map { it to positionLabel(it) }
+        val lines = listOf(1 to R.string.lines_one, 2 to R.string.lines_two, 3 to R.string.lines_three)
+        bindChoice(R.id.title_position, positions, MapPrefs.titlePosition(prefs)) {
+            MapPrefs.setPosition(this, MapPrefs.KEY_TITLE_POSITION, it)
+        }
+        bindChoice(R.id.title_lines, lines, MapPrefs.titleLines(prefs)) {
+            MapPrefs.setLines(this, MapPrefs.KEY_TITLE_LINES, it)
+        }
+        bindChoice(R.id.dedication_position, positions, MapPrefs.dedicationPosition(prefs)) {
+            MapPrefs.setPosition(this, MapPrefs.KEY_DEDICATION_POSITION, it)
+        }
+        bindChoice(R.id.dedication_lines, lines, MapPrefs.dedicationLines(prefs)) {
+            MapPrefs.setLines(this, MapPrefs.KEY_DEDICATION_LINES, it)
+        }
+    }
+
+    private fun positionLabel(position: InscriptionPosition): Int = when (position) {
+        InscriptionPosition.TOP -> R.string.position_top
+        InscriptionPosition.CENTER -> R.string.position_center
+        InscriptionPosition.BOTTOM -> R.string.position_bottom
+    }
+
+    /** Кнопки выбора из [options] (значение и подпись); выбранное сразу сохраняется через [save]. */
+    private fun <T> bindChoice(groupId: Int, options: List<Pair<T, Int>>, current: T, save: (T) -> Unit) {
+        val group = findViewById<RadioGroup>(groupId)
+        for ((value, label) in options) {
+            val button = RadioButton(this).apply {
+                id = View.generateViewId()
+                setText(label)
+                setTextColor(getColor(R.color.parchment))
+                buttonTintList = getColorStateList(R.color.parchment)
+                // Состояние восстанавливается из настроек, а не из сохранённых View.
+                isSaveEnabled = false
+            }
+            group.addView(button, RadioGroup.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            if (value == current) group.check(button.id)
+        }
+        group.setOnCheckedChangeListener { g, checkedId ->
+            val index = g.indexOfChild(g.findViewById<View>(checkedId))
+            if (index >= 0) save(options[index].first)
+        }
     }
 
     /** Строка «имя + Удалить». Позиция строки в [travelerList] совпадает с индексом в [travelerNames]. */

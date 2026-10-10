@@ -15,14 +15,39 @@ import android.os.Build
 
 /**
  * Рисует обои по слоям:
- * 0 — пергамент ([drawBackground]), растянутый по принципу center-crop без искажений;
- * 1 — нарисованная карта ([drawMap]), вписанная в экран целиком;
+ * 0 — пергамент ([drawBackground]), растянутый по принципу center-crop без искажений:
+ *     статический ([Background.STATIC]) или динамический — с пятнами и пылинками ([Background.DYNAMIC]);
+ * 1 — рисунок: карта ([drawMap]), вписанная в экран целиком ([Drawing.MAP]),
+ *     или надписи ([inscriptions], [Drawing.INSCRIPTIONS]);
  * 2 — путники со следами и подписями ([drawCreatures]).
  */
 class MapRenderer(private val context: Context) {
 
-    /** Слой 0 — ровный пергамент; загружается при первой отрисовке. */
+    /** Слой 0, вариант 1 — статический пергамент; загружается при первой отрисовке. */
     private var parchment: Bitmap? = null
+
+    /** Вариант фона; ненужная картинка другого варианта освобождается. */
+    var background: Background = MapPrefs.DEFAULT_BACKGROUND
+        set(value) {
+            if (field == value) return
+            field = value
+            if (value == Background.DYNAMIC) {
+                parchment?.recycle()
+                parchment = null
+            } else {
+                dustParchment?.recycle()
+                dustParchment = null
+            }
+        }
+
+    /**
+     * Слой 0, вариант 2 — процедурный пергамент под размер экрана ([ParchmentGenerator]).
+     * Генерируется в фоне; пока его нет — заливка базовым цветом бумаги.
+     */
+    var dustParchment: Bitmap? = null
+
+    /** Пылинки над пергаментом варианта 2. */
+    private val dust by lazy { DustEffect(context.resources.displayMetrics.density) }
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val srcRect = Rect()
     private val dstRect = Rect()
@@ -37,8 +62,35 @@ class MapRenderer(private val context: Context) {
     }
     private var mapCache: Bitmap? = null
 
-    /** Картинка карты, по которой посчитана сетка путников: пересчёт — только при новой. */
+    /** Вариант рисунка: карта или надписи — рисуется что-то одно. */
+    var drawing: Drawing = MapPrefs.DEFAULT_DRAWING
+        set(value) {
+            if (field == value) return
+            field = value
+            if (value != Drawing.MAP) {
+                mapRaster = null
+                mapCache?.recycle()
+                mapCache = null
+            }
+        }
+
+    /**
+     * По чему посчитана сетка путников: картинка карты и раскладка надписей;
+     * пересчёт — только когда что-то из этого изменилось.
+     */
     private var walkAreaSource: Bitmap? = null
+    private var walkAreaInscriptions = -1
+    private var walkAreaResult: WalkArea? = null
+
+    /** Посвящение и название карты; где они стоят и сколько в них строк — задаёт движок. */
+    val inscriptions by lazy {
+        MapInscriptions(
+            context.resources.displayMetrics.density,
+            MapFonts.script(context),
+            MapFonts.names(context),
+            MapFonts.title(context),
+        )
+    }
 
     /**
      * Изображение слоя карты; null — слой выключен или ещё загружается.
@@ -59,55 +111,98 @@ class MapRenderer(private val context: Context) {
     var mapRaster: Bitmap? = null
 
     /**
-     * Интенсивность цвета карты в процентах: до 100 — чернила бледнее,
-     * выше 100 — карта накладывается второй раз и чернила гуще.
+     * Интенсивность цвета рисунка (карты или надписей) в процентах: до 100 — чернила бледнее,
+     * выше 100 — рисунок накладывается второй раз и чернила гуще.
      */
     var mapIntensity: Int = MapPrefs.DEFAULT_MAP_INTENSITY
+
+    /** Фон анимирован (пылинки) — кадры нужны, даже когда на карте никого нет. */
+    val isAnimated: Boolean
+        get() = background == Background.DYNAMIC
 
     /** Слой 2; null — не рисуется. */
     var creatures: MapCreatures? = null
 
     private val creatureRenderer by lazy { CreatureRenderer(context) }
 
+    /** Сдвигает анимацию фона на [dtSeconds] секунд. */
+    fun update(dtSeconds: Float) {
+        if (background == Background.DYNAMIC) dust.update(dtSeconds.coerceIn(0f, MAX_DUST_STEP_S))
+    }
+
     fun draw(canvas: Canvas) {
         canvas.drawColor(Color.BLACK)
         drawBackground(canvas)
-        drawMap(canvas)
+        when (drawing) {
+            Drawing.MAP -> drawMap(canvas)
+            Drawing.INSCRIPTIONS -> {
+                inscriptions.resize(canvas.width, canvas.height)
+                inscriptions.draw(canvas, mapIntensity)
+            }
+        }
         updateWalkArea(canvas.width, canvas.height)
         drawCreatures(canvas)
     }
 
     /**
-     * Путники ходят только по чистой бумаге — там, где нет рисунка карты.
-     * Без карты (или с невидимой) — по всему экрану.
+     * Путники ходят только по чистой бумаге — там, где нет рисунка карты или надписей.
+     * С невидимым рисунком (интенсивность 0 %) — по всему экрану.
      */
     fun updateWalkArea(width: Int, height: Int) {
         val world = creatures ?: return
-        if ((mapRaster == null && mapImage == null) || mapIntensity <= 0) {
+        if (width <= 0 || height <= 0) return
+        val visible = mapIntensity > 0
+        val mapVisible = visible && drawing == Drawing.MAP && (mapRaster != null || mapImage != null)
+        val withInscriptions = visible && drawing == Drawing.INSCRIPTIONS
+        if (!mapVisible && !withInscriptions) {
             if (world.walkArea != null) world.walkArea = null
             walkAreaSource = null
+            walkAreaInscriptions = NO_INSCRIPTIONS
+            walkAreaResult = null
             return
         }
-        val bitmap = mapBitmap(width, height) ?: return
-        if (bitmap === walkAreaSource && world.walkArea != null) return
-        world.walkArea = walkAreaOf(bitmap, world.dp)
+        val bitmap = if (mapVisible) (mapBitmap(width, height) ?: return) else null
+        val inscriptionsKey = if (withInscriptions) {
+            inscriptions.resize(width, height)
+            inscriptions.version
+        } else {
+            NO_INSCRIPTIONS
+        }
+        if (bitmap === walkAreaSource && inscriptionsKey == walkAreaInscriptions &&
+            world.walkArea === walkAreaResult
+        ) return
+        world.walkArea = walkAreaOf(bitmap, withInscriptions, width, height, world.dp)
         walkAreaSource = bitmap
+        walkAreaInscriptions = inscriptionsKey
+        walkAreaResult = world.walkArea
     }
 
-    /** Сетка чернил: клетка занята, если в ней есть хоть одна тёмная точка рисунка. */
-    private fun walkAreaOf(bitmap: Bitmap, dp: Float): WalkArea {
-        val width = bitmap.width
-        val height = bitmap.height
+    /**
+     * Сетка чернил: клетка занята, если в ней есть хоть одна тёмная точка рисунка [map]
+     * или она лежит под надписью (если [withInscriptions]).
+     */
+    private fun walkAreaOf(map: Bitmap?, withInscriptions: Boolean, width: Int, height: Int, dp: Float): WalkArea {
         val cell = WalkArea.CELL_DP * dp
         val (cols, rows) = WalkArea.gridSize(width.toFloat(), height.toFloat(), cell)
         val ink = BooleanArray(cols * rows)
-        val line = IntArray(width)
-        val colOf = IntArray(width) { minOf((it / cell).toInt(), cols - 1) }
-        for (y in 0 until height) {
-            bitmap.getPixels(line, 0, width, 0, y, width, 1)
-            val rowStart = minOf((y / cell).toInt(), rows - 1) * cols
-            for (x in 0 until width) {
-                if (isInk(line[x])) ink[rowStart + colOf[x]] = true
+        if (map != null) {
+            val line = IntArray(width)
+            val colOf = IntArray(width) { minOf((it / cell).toInt(), cols - 1) }
+            for (y in 0 until height) {
+                map.getPixels(line, 0, width, 0, y, width, 1)
+                val rowStart = minOf((y / cell).toInt(), rows - 1) * cols
+                for (x in 0 until width) {
+                    if (isInk(line[x])) ink[rowStart + colOf[x]] = true
+                }
+            }
+        }
+        if (withInscriptions) for (r in inscriptions.bounds()) {
+            val left = (r.left / cell).toInt().coerceIn(0, cols - 1)
+            val right = (r.right / cell).toInt().coerceIn(0, cols - 1)
+            val top = (r.top / cell).toInt().coerceIn(0, rows - 1)
+            val bottom = (r.bottom / cell).toInt().coerceIn(0, rows - 1)
+            for (row in top..bottom) {
+                for (col in left..right) ink[row * cols + col] = true
             }
         }
         return WalkArea.fromInk(width.toFloat(), height.toFloat(), cell, dp, ink)
@@ -145,9 +240,23 @@ class MapRenderer(private val context: Context) {
     }
 
     private fun drawBackground(canvas: Canvas) {
-        val bitmap = parchment ?: BitmapFactory.decodeResource(
-            context.resources, R.drawable.bg_plain, BitmapFactory.Options().apply { inScaled = false },
-        ).also { parchment = it }
+        when (background) {
+            Background.STATIC -> {
+                val bitmap = parchment ?: BitmapFactory.decodeResource(
+                    context.resources, R.drawable.bg_plain, BitmapFactory.Options().apply { inScaled = false },
+                ).also { parchment = it }
+                drawCropped(canvas, bitmap)
+            }
+            Background.DYNAMIC -> {
+                // После поворота, пока новый лист не готов, растягивается прежний.
+                dustParchment?.let { drawCropped(canvas, it) } ?: canvas.drawColor(ParchmentGenerator.BASE_COLOR)
+                dust.resize(canvas.width.toFloat(), canvas.height.toFloat())
+                dust.draw(canvas)
+            }
+        }
+    }
+
+    private fun drawCropped(canvas: Canvas, bitmap: Bitmap) {
         centerCrop(bitmap.width, bitmap.height, canvas.width, canvas.height, srcRect)
         dstRect.set(0, 0, canvas.width, canvas.height)
         canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
@@ -156,6 +265,8 @@ class MapRenderer(private val context: Context) {
     fun release() {
         parchment?.recycle()
         parchment = null
+        dustParchment?.recycle()
+        dustParchment = null
         mapImage = null
         mapRaster = null
         creatureRenderer.release()
@@ -179,6 +290,12 @@ class MapRenderer(private val context: Context) {
             return bitmap
         }
 
+
+        /** Ключ раскладки надписей, когда надписи не рисуются. */
+        private const val NO_INSCRIPTIONS = -1
+
+        /** Пылинки не прыгают после долгого кадра: шаг не больше 0,1 с. */
+        private const val MAX_DUST_STEP_S = 0.1f
 
         /** Поля вокруг карты — доля меньшей стороны экрана. */
         private const val MAP_MARGIN = 0.04f

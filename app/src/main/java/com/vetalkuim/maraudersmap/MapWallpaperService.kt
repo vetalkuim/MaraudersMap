@@ -25,6 +25,11 @@ class MapWallpaperService : WallpaperService() {
         @Volatile
         private var mapGeneration = 0
 
+        /** Пергамент варианта 2 генерируется отдельно, чтобы не ждать растеризации карты. */
+        private val backgroundLoader: ExecutorService = Executors.newSingleThreadExecutor()
+        @Volatile
+        private var backgroundGeneration = 0
+
         /** Слой 2 живёт, пока жив движок: поворот экрана только меняет его размер. */
         private val creatures = MapCreatures(resources.displayMetrics.density)
 
@@ -38,6 +43,9 @@ class MapWallpaperService : WallpaperService() {
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
             renderer.creatures = creatures
+            renderer.background = MapPrefs.background(prefs)
+            renderer.drawing = MapPrefs.drawing(prefs)
+            applyInscriptions(prefs)
             renderer.mapIntensity = MapPrefs.mapIntensity(prefs)
             creatures.travelerNames = MapPrefs.travelerNames(prefs)
             creatures.dementorCount = MapPrefs.dementorCount(prefs)
@@ -49,7 +57,9 @@ class MapWallpaperService : WallpaperService() {
             prefs.unregisterOnSharedPreferenceChangeListener(this)
             handler.removeCallbacks(drawRunnable)
             mapGeneration++
+            backgroundGeneration++
             loader.shutdownNow()
+            backgroundLoader.shutdownNow()
             renderer.release()
             super.onDestroy()
         }
@@ -70,6 +80,7 @@ class MapWallpaperService : WallpaperService() {
             surfaceHeight = height
             val raster = renderer.mapRaster
             if (raster == null || raster.width != width || raster.height != height) loadMap()
+            loadBackground()
             val first = creatures.width == 0f
             creatures.resize(width.toFloat(), height.toFloat())
             // Предпросмотр и первый показ сразу с путниками и цепочкой следов, без касания;
@@ -109,10 +120,36 @@ class MapWallpaperService : WallpaperService() {
                     creatures.dementorCount = MapPrefs.dementorCount(sharedPreferences)
                     if (visible) drawFrame()
                 }
+                MapPrefs.KEY_BACKGROUND -> {
+                    renderer.background = MapPrefs.background(sharedPreferences)
+                    loadBackground()
+                    if (visible) drawFrame()
+                }
+                MapPrefs.KEY_DRAWING -> {
+                    renderer.drawing = MapPrefs.drawing(sharedPreferences)
+                    // Карта нужна только своему варианту: иначе её загрузка отменяется, а картинка освобождена.
+                    if (renderer.drawing == Drawing.MAP) loadMap() else mapGeneration++
+                    if (visible) drawFrame()
+                }
+                MapPrefs.KEY_DEDICATION_POSITION, MapPrefs.KEY_TITLE_POSITION,
+                MapPrefs.KEY_DEDICATION_LINES, MapPrefs.KEY_TITLE_LINES -> {
+                    applyInscriptions(sharedPreferences)
+                    if (visible) drawFrame()
+                }
                 MapPrefs.KEY_MAP_INTENSITY -> {
                     renderer.mapIntensity = MapPrefs.mapIntensity(sharedPreferences)
                     if (visible) drawFrame()
                 }
+            }
+        }
+
+        /** Надписи статичны: после изменения настроек нужен лишь один новый кадр. */
+        private fun applyInscriptions(prefs: SharedPreferences) {
+            renderer.inscriptions.apply {
+                dedicationPosition = MapPrefs.dedicationPosition(prefs)
+                titlePosition = MapPrefs.titlePosition(prefs)
+                dedicationLineCount = MapPrefs.dedicationLines(prefs)
+                titleLineCount = MapPrefs.titleLines(prefs)
             }
         }
 
@@ -123,6 +160,7 @@ class MapWallpaperService : WallpaperService() {
          */
         private fun loadMap() {
             val generation = ++mapGeneration
+            if (renderer.drawing != Drawing.MAP) return
             val width = surfaceWidth
             val height = surfaceHeight
             if (width <= 0 || height <= 0) {
@@ -148,8 +186,38 @@ class MapWallpaperService : WallpaperService() {
                     null
                 }
                 handler.post {
-                    if (generation != mapGeneration) return@post
+                    if (generation != mapGeneration || renderer.drawing != Drawing.MAP) return@post
                     renderer.mapRaster = raster
+                    if (visible) drawFrame()
+                }
+            }
+        }
+
+        /**
+         * Пергамент варианта 2 генерируется под размер экрана в фоне (~100–300 мс);
+         * до этого рисуется заливка базовым цветом бумаги.
+         */
+        private fun loadBackground() {
+            val generation = ++backgroundGeneration
+            val width = surfaceWidth
+            val height = surfaceHeight
+            if (renderer.background != Background.DYNAMIC || width <= 0 || height <= 0) return
+            val current = renderer.dustParchment
+            if (current != null && current.width == width && current.height == height) return
+            backgroundLoader.execute {
+                if (generation != backgroundGeneration) return@execute
+                val bitmap = try {
+                    ParchmentGenerator.generate(width, height)
+                } catch (e: OutOfMemoryError) {
+                    Log.w(TAG, "Parchment is too large", e)
+                    null
+                } ?: return@execute
+                handler.post {
+                    if (generation != backgroundGeneration || renderer.background != Background.DYNAMIC) {
+                        bitmap.recycle()
+                        return@post
+                    }
+                    renderer.dustParchment = bitmap
                     if (visible) drawFrame()
                 }
             }
@@ -168,7 +236,9 @@ class MapWallpaperService : WallpaperService() {
         private fun drawFrame() {
             handler.removeCallbacks(drawRunnable)
             val now = SystemClock.uptimeMillis()
-            creatures.update(if (lastFrameAt == 0L) 0f else (now - lastFrameAt) / 1000f)
+            val dt = if (lastFrameAt == 0L) 0f else (now - lastFrameAt) / 1000f
+            creatures.update(dt)
+            renderer.update(dt)
             lastFrameAt = now
             val holder = surfaceHolder
             // Аппаратный канвас заметно быстрее рисует пергамент и карту.
@@ -183,12 +253,12 @@ class MapWallpaperService : WallpaperService() {
                 holder.unlockCanvasAndPost(canvas)
             }
             if (!visible) return
-            if (!creatures.isIdle) handler.postDelayed(drawRunnable, CREATURE_FRAME_DELAY_MS)
+            if (!creatures.isIdle || renderer.isAnimated) handler.postDelayed(drawRunnable, CREATURE_FRAME_DELAY_MS)
         }
     }
 
     private companion object {
-        /** Путникам и следам хватает ~30 кадров в секунду. */
+        /** Путникам, следам и пылинкам хватает ~30 кадров в секунду. */
         const val CREATURE_FRAME_DELAY_MS = 33L
         const val SCROLL_SETTLE_MS = 300L
         const val TAG = "MapWallpaper"
